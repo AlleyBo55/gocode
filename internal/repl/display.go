@@ -25,49 +25,46 @@ func (d *Display) StreamEvent(ev apitypes.StreamEvent) {
 			switch ev.BlockDelta.Kind {
 			case "text_delta":
 				fmt.Fprint(d.w, ev.BlockDelta.Text)
-			case "thinking_delta":
-				// Could render thinking indicator
 			}
 		}
 	case "message_stop":
 		fmt.Fprintln(d.w)
 	case "content_block_start":
 		if ev.ContentBlock != nil && ev.ContentBlock.Kind == "tool_use" {
-			fmt.Fprintf(d.w, "\n⚡ Tool: %s\n", ev.ContentBlock.Name)
+			fmt.Fprintf(d.w, "\n%s⚡ %s%s\n", cBlue, ev.ContentBlock.Name, ansiReset)
 		}
 	}
 }
 
-// ToolStart displays tool invocation info.
-func (d *Display) ToolStart(name string, inputSummary string) {
-	fmt.Fprintf(d.w, "  → Running %s", name)
-	if inputSummary != "" {
-		fmt.Fprintf(d.w, " (%s)", inputSummary)
-	}
-	fmt.Fprintln(d.w)
-}
-
-// ToolDone displays tool completion status.
-func (d *Display) ToolDone(name string, isError bool) {
-	if isError {
-		fmt.Fprintf(d.w, "  ✗ %s failed\n", name)
-	} else {
-		fmt.Fprintf(d.w, "  ✓ %s done\n", name)
+// RenderResponse renders a full message response with markdown formatting.
+func (d *Display) RenderResponse(resp *apitypes.MessageResponse) {
+	for _, block := range resp.Content {
+		switch block.Kind {
+		case "text":
+			rendered := RenderMarkdown(block.Text)
+			fmt.Fprint(d.w, rendered)
+		case "tool_use":
+			inputStr := "{}"
+			if len(block.Input) > 0 {
+				inputStr = string(block.Input)
+			}
+			fmt.Fprintf(d.w, "\n%s⚡ %s%s(%s)\n", cBlue, block.Name, ansiReset, cGray+summarizeJSON(inputStr)+ansiReset)
+		}
 	}
 }
 
 // Error displays an error message.
 func (d *Display) Error(err error) {
-	fmt.Fprintf(d.w, "Error: %v\n", err)
+	fmt.Fprintf(d.w, "%sError: %v%s\n", cRed, err, ansiReset)
 }
 
 // Usage displays token usage.
 func (d *Display) Usage(usage string) {
-	fmt.Fprintln(d.w, usage)
+	fmt.Fprintf(d.w, "%s%s%s\n", cCyan, usage, ansiReset)
 }
 
-// PermissionPrompt displays a permission request and reads the response.
+// PermissionPrompt displays a permission request.
 func (d *Display) PermissionPrompt(toolName, operation string) {
-	fmt.Fprintf(d.w, "🔒 Tool %s wants to: %s\n", toolName, operation)
-	fmt.Fprint(d.w, "   Allow? [y/N]: ")
+	fmt.Fprintf(d.w, "%s🔒 %s%s wants to run: %s%s%s\n", cYellow, cWhite+ansiBold, toolName, ansiReset+cGray, operation, ansiReset)
+	fmt.Fprintf(d.w, "   %sAllow? [y/N]:%s ", cYellow, ansiReset)
 }

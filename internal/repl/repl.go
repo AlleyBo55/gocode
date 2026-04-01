@@ -49,7 +49,7 @@ func (r *REPL) Run(ctx context.Context) error {
 	})
 
 	for {
-		fmt.Fprint(r.writer, "you> ")
+		fmt.Fprintf(r.writer, "%syou>%s ", cGreen+ansiBold, ansiReset)
 		input, err := ReadInput(scanner)
 		if err != nil {
 			if err == io.EOF {
@@ -91,19 +91,8 @@ func (r *REPL) Run(ctx context.Context) error {
 			continue
 		}
 
-		fmt.Fprint(r.writer, "assistant> ")
-		for _, block := range resp.Content {
-			switch block.Kind {
-			case "text":
-				fmt.Fprint(r.writer, block.Text)
-			case "tool_use":
-				inputStr := "{}"
-				if len(block.Input) > 0 {
-					inputStr = string(block.Input)
-				}
-				fmt.Fprintf(r.writer, "\n⚡ Tool: %s(%s)\n", block.Name, summarizeJSON(inputStr))
-			}
-		}
+		fmt.Fprintf(r.writer, "%sassistant>%s ", cBlue+ansiBold, ansiReset)
+		r.display.RenderResponse(resp)
 		fmt.Fprintln(r.writer)
 	}
 }
@@ -114,14 +103,14 @@ type TerminalToolCallback struct {
 }
 
 func (t *TerminalToolCallback) OnToolStart(name string, input map[string]interface{}) {
-	fmt.Fprintf(t.Writer, "\r\033[K  ⚡ Running %s...\n", name)
+	fmt.Fprintf(t.Writer, "\r\033[K  %s⚡ Running %s%s...%s\n", cBlue, cWhite+ansiBold, name, ansiReset)
 }
 
 func (t *TerminalToolCallback) OnToolEnd(name string, success bool) {
 	if success {
-		fmt.Fprintf(t.Writer, "  ✓ %s done\n", name)
+		fmt.Fprintf(t.Writer, "  %s✓ %s%s\n", cGreen, name, ansiReset)
 	} else {
-		fmt.Fprintf(t.Writer, "  ✗ %s failed\n", name)
+		fmt.Fprintf(t.Writer, "  %s✗ %s%s\n", cRed, name, ansiReset)
 	}
 }
 
@@ -134,8 +123,8 @@ type TerminalPermissionPrompter struct {
 // Prompt asks the user for permission, showing the tool name and params.
 func (p *TerminalPermissionPrompter) Prompt(toolName string, operation string) (bool, error) {
 	summary := summarizeJSON(operation)
-	fmt.Fprintf(p.Writer, "🔒 %s wants to run: %s\n", toolName, summary)
-	fmt.Fprint(p.Writer, "   Allow? [y/N]: ")
+	display := NewDisplay(p.Writer)
+	display.PermissionPrompt(toolName, summary)
 	if !p.Scanner.Scan() {
 		return false, nil
 	}
