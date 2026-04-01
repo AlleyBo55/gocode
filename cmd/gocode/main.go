@@ -30,7 +30,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.2.0"
+var version = "v0.2.1"
 
 func main() {
 	// Initialize registries from embedded data.
