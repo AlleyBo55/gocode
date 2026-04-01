@@ -48,12 +48,12 @@ changelog:
       - "^test:"
       - "^ci:"
 
-brews:
-  - repository:
-      owner: AlleyBo55
-      name: homebrew-gocode
-    homepage: https://github.com/AlleyBo55/gocode
-    description: High-performance AI agent harness runtime in Go
-    license: MIT
-    install: |
-      bin.install "gocode"
+# brews:
+#   - repository:
+#       owner: AlleyBo55
+#       name: homebrew-gocode
+#     homepage: https://github.com/AlleyBo55/gocode
+#     description: High-performance AI agent harness runtime in Go
+#     license: MIT
+#     install: |
+#       bin.install "gocode"
