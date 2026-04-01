@@ -1,0 +1,98 @@
+package apiclient
+
+import "strings"
+
+// ProviderKind identifies an LLM provider backend.
+type ProviderKind int
+
+const (
+	ProviderAnthropic ProviderKind = iota
+	ProviderXai
+	ProviderOpenAi
+	ProviderGemini
+)
+
+// modelAliases maps short names to full model identifiers.
+var modelAliases = map[string]string{
+	// Anthropic Claude
+	"opus":   "claude-opus-4-6",
+	"sonnet": "claude-sonnet-4-6",
+	"haiku":  "claude-haiku-4-5-20251213",
+	// OpenAI GPT
+	"gpt4":      "gpt-4o",
+	"gpt4o":     "gpt-4o",
+	"gpt4-mini": "gpt-4o-mini",
+	"gpt":       "gpt-4o",
+	"o1":        "o1",
+	"o1-mini":   "o1-mini",
+	"o3":        "o3",
+	"o3-mini":   "o3-mini",
+	"o4-mini":   "o4-mini",
+	"codex":     "codex-mini-latest",
+	// Google Gemini
+	"gemini":      "gemini-2.5-pro",
+	"gemini-pro":  "gemini-2.5-pro",
+	"gemini-flash": "gemini-2.5-flash",
+	// xAI Grok
+	"grok":      "grok-3",
+	"grok-mini": "grok-3-mini",
+	"grok-2":    "grok-2",
+}
+
+// ResolveModelAlias maps short names to full model identifiers.
+// Returns the input unchanged if it's not a known alias.
+func ResolveModelAlias(alias string) string {
+	lower := strings.ToLower(strings.TrimSpace(alias))
+	if full, ok := modelAliases[lower]; ok {
+		return full
+	}
+	return strings.TrimSpace(alias)
+}
+
+// DetectProviderKind determines the provider from a model name.
+func DetectProviderKind(model string) ProviderKind {
+	resolved := strings.ToLower(ResolveModelAlias(model))
+
+	// Model-prefix-based detection
+	if strings.HasPrefix(resolved, "claude") {
+		return ProviderAnthropic
+	}
+	if strings.HasPrefix(resolved, "gpt") || strings.HasPrefix(resolved, "o1") ||
+		strings.HasPrefix(resolved, "o3") || strings.HasPrefix(resolved, "o4") ||
+		strings.HasPrefix(resolved, "codex") {
+		return ProviderOpenAi
+	}
+	if strings.HasPrefix(resolved, "gemini") {
+		return ProviderGemini
+	}
+	if strings.HasPrefix(resolved, "grok") {
+		return ProviderXai
+	}
+
+	// Fallback: check env vars
+	if envNonEmpty("ANTHROPIC_API_KEY") || envNonEmpty("ANTHROPIC_AUTH_TOKEN") {
+		return ProviderAnthropic
+	}
+	if envNonEmpty("OPENAI_API_KEY") {
+		return ProviderOpenAi
+	}
+	if envNonEmpty("GEMINI_API_KEY") || envNonEmpty("GOOGLE_API_KEY") {
+		return ProviderGemini
+	}
+	if envNonEmpty("XAI_API_KEY") {
+		return ProviderXai
+	}
+	return ProviderAnthropic
+}
+
+// MaxTokensForModel returns the max output tokens for a model.
+func MaxTokensForModel(model string) int {
+	canonical := strings.ToLower(ResolveModelAlias(model))
+	if strings.Contains(canonical, "opus") {
+		return 32000
+	}
+	if strings.Contains(canonical, "gemini") {
+		return 65536
+	}
+	return 64000
+}
