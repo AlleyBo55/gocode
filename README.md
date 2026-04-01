@@ -181,14 +181,14 @@ brew install AlleyBo55/gocode/gocode
 ```
 
 ```bash
-# Linux (Debian/Ubuntu)
-curl -fsSL https://github.com/AlleyBo55/gocode/releases/latest/download/gocode_linux_amd64.deb -o gocode.deb
+# Linux (Debian/Ubuntu) - .deb package
+curl -Lo gocode.deb https://github.com/AlleyBo55/gocode/releases/latest/download/gocode_amd64.deb
 sudo dpkg -i gocode.deb
 ```
 
 ```bash
-# Linux (RPM/Fedora/RHEL)
-curl -fsSL https://github.com/AlleyBo55/gocode/releases/latest/download/gocode_linux_amd64.rpm -o gocode.rpm
+# Linux (Fedora/RHEL/CentOS) - .rpm package
+curl -Lo gocode.rpm https://github.com/AlleyBo55/gocode/releases/latest/download/gocode_amd64.rpm
 sudo rpm -i gocode.rpm
 ```
 
@@ -198,7 +198,7 @@ choco install gocode
 ```
 
 ```bash
-# Any OS - one-liner shell script
+# Any OS - shell script
 curl -fsSL https://raw.githubusercontent.com/AlleyBo55/gocode/master/install.sh | bash
 ```
 
@@ -208,10 +208,9 @@ go install github.com/AlleyBo55/gocode/cmd/gocode@latest
 ```
 
 ```bash
-# Build from source
-git clone https://github.com/AlleyBo55/gocode.git
-cd gocode
-make install
+# Manual download (all platforms)
+# Go to https://github.com/AlleyBo55/gocode/releases/latest
+# Download the binary for your OS/arch, extract, put in your PATH
 ```
 
 That's it. Type `gocode` anywhere.
