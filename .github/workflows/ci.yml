@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Cross-compile (linux/amd64)
+        run: GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/gocode/
+
+      - name: Cross-compile (darwin/amd64)
+        run: GOOS=darwin GOARCH=amd64 go build -o /dev/null ./cmd/gocode/
+
+      - name: Cross-compile (windows/amd64)
+        run: GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/gocode/
