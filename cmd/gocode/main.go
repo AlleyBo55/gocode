@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -433,8 +434,8 @@ func main() {
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
 
 			prompter := &repl.TerminalPermissionPrompter{
-				Reader: os.Stdin, Writer: os.Stdout,
-				Display: repl.NewDisplay(os.Stdout),
+				Scanner: bufio.NewScanner(os.Stdin),
+				Writer:  os.Stdout,
 			}
 
 			runtime := agent.NewConversationRuntime(agent.RuntimeOptions{
