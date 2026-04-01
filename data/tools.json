@@ -1,0 +1,12 @@
+[
+  {"name": "BashTool", "responsibility": "execute shell commands", "source_hint": "tools/bash"},
+  {"name": "FileReadTool", "responsibility": "read file contents", "source_hint": "tools/file"},
+  {"name": "FileEditTool", "responsibility": "edit file contents", "source_hint": "tools/file"},
+  {"name": "FileWriteTool", "responsibility": "write new files", "source_hint": "tools/file"},
+  {"name": "GlobTool", "responsibility": "search files by glob pattern", "source_hint": "tools/glob"},
+  {"name": "GrepTool", "responsibility": "search file contents", "source_hint": "tools/grep"},
+  {"name": "ListDirectoryTool", "responsibility": "list directory contents", "source_hint": "tools/directory"},
+  {"name": "MCPTool", "responsibility": "invoke MCP server tools", "source_hint": "tools/mcp"},
+  {"name": "WebSearchTool", "responsibility": "search the web", "source_hint": "tools/web"},
+  {"name": "NotebookTool", "responsibility": "manage notebook cells", "source_hint": "tools/notebook"}
+]

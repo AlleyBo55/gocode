@@ -1,0 +1,12 @@
+[
+  {"name": "help", "responsibility": "display help information", "source_hint": "cli/commands"},
+  {"name": "init", "responsibility": "initialize a new project workspace", "source_hint": "cli/commands"},
+  {"name": "config", "responsibility": "manage configuration settings", "source_hint": "cli/commands"},
+  {"name": "status", "responsibility": "show current session status", "source_hint": "cli/commands"},
+  {"name": "doctor", "responsibility": "diagnose workspace issues", "source_hint": "cli/commands"},
+  {"name": "login", "responsibility": "authenticate with remote service", "source_hint": "cli/commands"},
+  {"name": "logout", "responsibility": "clear authentication state", "source_hint": "cli/commands"},
+  {"name": "compact", "responsibility": "compact conversation history", "source_hint": "plugins/compact"},
+  {"name": "review", "responsibility": "review code changes", "source_hint": "skills/review"},
+  {"name": "pr-review", "responsibility": "review pull request", "source_hint": "skills/pr"}
+]

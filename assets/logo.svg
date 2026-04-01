@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ADD8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#007D9C;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="120" rx="16" fill="url(#bg)"/>
+  <text x="200" y="58" font-family="system-ui,-apple-system,sans-serif" font-size="48" font-weight="700" fill="white" text-anchor="middle" letter-spacing="-1">
+    gocode
+  </text>
+  <text x="200" y="90" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="rgba(255,255,255,0.85)" text-anchor="middle" letter-spacing="3">
+    AGENT HARNESS RUNTIME
+  </text>
+</svg>
