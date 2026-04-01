@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/AlleyBo55/gocode/data"
+	"github.com/AlleyBo55/gocode/internal/agent"
+	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/bootstrap"
 	"github.com/AlleyBo55/gocode/internal/commandgraph"
 	"github.com/AlleyBo55/gocode/internal/commands"
@@ -15,6 +18,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/manifest"
 	"github.com/AlleyBo55/gocode/internal/mcp"
 	"github.com/AlleyBo55/gocode/internal/modes"
+	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/permissions"
 	"github.com/AlleyBo55/gocode/internal/queryengine"
 	"github.com/AlleyBo55/gocode/internal/runtime"
@@ -408,6 +412,96 @@ func main() {
 			return nil
 		},
 	})
+
+	// 22. chat — interactive REPL agent mode
+	chatCmd := &cobra.Command{
+		Use:   "chat",
+		Short: "Start interactive agent chat",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			model, _ := cmd.Flags().GetString("model")
+			maxTurns, _ := cmd.Flags().GetInt("max-turns")
+			maxTokens, _ := cmd.Flags().GetInt("max-tokens")
+			apiKey, _ := cmd.Flags().GetString("api-key")
+
+			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
+			if err != nil {
+				return fmt.Errorf("resolving provider: %w", err)
+			}
+
+			toolImpl := toolimpl.NewRegistry()
+			executor := agent.NewRegistryExecutor(toolImpl, toolReg)
+			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
+
+			prompter := &repl.TerminalPermissionPrompter{
+				Reader: os.Stdin, Writer: os.Stdout,
+				Display: repl.NewDisplay(os.Stdout),
+			}
+
+			runtime := agent.NewConversationRuntime(agent.RuntimeOptions{
+				Provider:      provider,
+				Executor:      executor,
+				Model:         resolvedModel,
+				MaxTokens:     maxTokens,
+				MaxIterations: maxTurns,
+				SystemPrompt:  systemPrompt,
+				PermMode:      agent.WorkspaceWrite,
+				Prompter:      prompter,
+			})
+
+			r := repl.NewREPL(runtime, os.Stdin, os.Stdout, repl.REPLConfig{
+				Version:  version,
+				Model:    resolvedModel,
+				MaxTurns: maxTurns,
+			})
+			return r.Run(context.Background())
+		},
+	}
+	chatCmd.Flags().String("model", "sonnet", "Model name or alias")
+	chatCmd.Flags().Int("max-turns", 30, "Maximum agent loop iterations")
+	chatCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
+	chatCmd.Flags().String("api-key", "", "API key (overrides env vars)")
+	rootCmd.AddCommand(chatCmd)
+
+	// 23. prompt — one-shot agent mode
+	promptCmd := &cobra.Command{
+		Use:   "prompt [text]",
+		Short: "Run a single prompt through the agent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			model, _ := cmd.Flags().GetString("model")
+			maxTurns, _ := cmd.Flags().GetInt("max-turns")
+			maxTokens, _ := cmd.Flags().GetInt("max-tokens")
+			apiKey, _ := cmd.Flags().GetString("api-key")
+			noStream, _ := cmd.Flags().GetBool("no-stream")
+
+			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
+			if err != nil {
+				return fmt.Errorf("resolving provider: %w", err)
+			}
+
+			toolImpl := toolimpl.NewRegistry()
+			executor := agent.NewRegistryExecutor(toolImpl, toolReg)
+			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
+
+			runtime := agent.NewConversationRuntime(agent.RuntimeOptions{
+				Provider:      provider,
+				Executor:      executor,
+				Model:         resolvedModel,
+				MaxTokens:     maxTokens,
+				MaxIterations: maxTurns,
+				SystemPrompt:  systemPrompt,
+				PermMode:      agent.DangerFullAccess,
+			})
+
+			return repl.RunOneShot(context.Background(), runtime, args[0], !noStream, os.Stdout)
+		},
+	}
+	promptCmd.Flags().String("model", "sonnet", "Model name or alias")
+	promptCmd.Flags().Int("max-turns", 30, "Maximum agent loop iterations")
+	promptCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
+	promptCmd.Flags().String("api-key", "", "API key (overrides env vars)")
+	promptCmd.Flags().Bool("no-stream", false, "Disable streaming output")
+	rootCmd.AddCommand(promptCmd)
 
 	// 21. mcp-serve
 	mcpServeCmd := &cobra.Command{
