@@ -19,6 +19,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/apiserver"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/astgrep"
+	"github.com/AlleyBo55/gocode/internal/authkeys"
 	"github.com/AlleyBo55/gocode/internal/bootstrap"
 	"github.com/AlleyBo55/gocode/internal/commandgraph"
 	"github.com/AlleyBo55/gocode/internal/commands"
@@ -44,7 +45,16 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.6.0"
+var version = "v0.7.0"
+
+// isTerminal checks if stdout is a terminal (not piped).
+func isTerminal() bool {
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
 
 // stdRecoveryLogger logs recovery events to stderr via the standard log package.
 type stdRecoveryLogger struct{}
@@ -534,6 +544,8 @@ func main() {
 			allowedTools, _ := cmd.Flags().GetStringSlice("allowedTools")
 			disallowedTools, _ := cmd.Flags().GetStringSlice("disallowedTools")
 			useTUI, _ := cmd.Flags().GetBool("tui")
+			noTUI, _ := cmd.Flags().GetBool("no-tui")
+			themeName, _ := cmd.Flags().GetString("theme")
 
 			permMode := agent.WorkspaceWrite
 			if skipPerms {
@@ -626,7 +638,8 @@ func main() {
 			// Phase 1: wrap runtime with SessionRecoveryManager
 			_ = agent.NewSessionRecoveryManager(rt, sessionStore, stdRecoveryLogger{})
 
-			if useTUI {
+			if (useTUI || !noTUI) && isTerminal() {
+				tui.ApplyTheme(tui.LoadTheme(themeName))
 				return tui.Run(rt, tui.Config{
 					Version:  version,
 					Model:    resolvedModel,
@@ -655,7 +668,9 @@ func main() {
 	chatCmd.Flags().Bool("no-project-config", false, "Skip loading GOCODE.md/CLAUDE.md")
 	chatCmd.Flags().StringSlice("allowedTools", nil, "Whitelist specific tools")
 	chatCmd.Flags().StringSlice("disallowedTools", nil, "Blacklist specific tools")
-	chatCmd.Flags().Bool("tui", false, "Use bubbletea TUI instead of line-based REPL")
+	chatCmd.Flags().Bool("tui", false, "Force bubbletea TUI mode")
+	chatCmd.Flags().Bool("no-tui", false, "Force line-based REPL mode (disable TUI)")
+	chatCmd.Flags().String("theme", "", "TUI color theme (golang, monokai, dracula, nord)")
 	rootCmd.AddCommand(chatCmd)
 
 	// 23. prompt — one-shot agent mode
@@ -787,6 +802,13 @@ func main() {
 		Short: "Start headless HTTP API server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addr, _ := cmd.Flags().GetString("addr")
+			// Load auth keys for request validation
+			store := authkeys.NewStore(filepath.Join(".gocode", "auth_keys.json"))
+			store.Load()
+			var authOpts []func(string) bool
+			if len(store.List()) > 0 {
+				authOpts = append(authOpts, store.Validate)
+			}
 			handler := apiserver.NewHandler(
 				apiserver.Config{Version: version},
 				func(msg string) (string, error) {
@@ -795,6 +817,7 @@ func main() {
 				func() (int, string) {
 					return 0, "none"
 				},
+				authOpts...,
 			)
 			fmt.Fprintf(os.Stderr, "gocode API server listening on %s\n", addr)
 			return http.ListenAndServe(addr, handler)
@@ -910,6 +933,72 @@ func main() {
 			fmt.Print(string(out))
 		},
 	})
+
+	// --- auth — manage remote access auth keys ---
+	authCmd := &cobra.Command{
+		Use:   "auth",
+		Short: "Manage remote access auth keys",
+	}
+	authStorePath := filepath.Join(".gocode", "auth_keys.json")
+	authCmd.AddCommand(&cobra.Command{
+		Use:   "generate [name]",
+		Short: "Generate a new auth key",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := authkeys.NewStore(authStorePath)
+			if err := store.Load(); err != nil {
+				return err
+			}
+			ak, err := store.Generate(args[0])
+			if err != nil {
+				return err
+			}
+			if err := store.Save(); err != nil {
+				return err
+			}
+			fmt.Printf("Generated key: %s\n  ID:   %s\n  Name: %s\n  Key:  %s\n", ak.Name, ak.ID, ak.Name, ak.Key)
+			return nil
+		},
+	})
+	authCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all auth keys",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := authkeys.NewStore(authStorePath)
+			if err := store.Load(); err != nil {
+				return err
+			}
+			keys := store.List()
+			if len(keys) == 0 {
+				fmt.Println("No auth keys configured.")
+				return nil
+			}
+			for _, k := range keys {
+				fmt.Printf("%s  %s  (created %s)\n", k.ID, k.Name, k.CreatedAt)
+			}
+			return nil
+		},
+	})
+	authCmd.AddCommand(&cobra.Command{
+		Use:   "delete [id]",
+		Short: "Delete an auth key",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := authkeys.NewStore(authStorePath)
+			if err := store.Load(); err != nil {
+				return err
+			}
+			if err := store.Delete(args[0]); err != nil {
+				return err
+			}
+			if err := store.Save(); err != nil {
+				return err
+			}
+			fmt.Printf("Deleted key %s\n", args[0])
+			return nil
+		},
+	})
+	rootCmd.AddCommand(authCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

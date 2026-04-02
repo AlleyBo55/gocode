@@ -51,8 +51,10 @@ gocode does something no other tool does: it's both a **standalone AI coding age
 
 | Mode | What It Does | How You Use It |
 |------|-------------|----------------|
-| **Agent Mode** | Talk to any LLM directly from your terminal. It reads files, runs commands, edits code — autonomously. | `gocode chat` or `gocode prompt "..."` |
-| **MCP Server Mode** | Plug into Cursor, Kiro, VS Code, Antigravity, or Claude Desktop as a tool server. | `gocode mcp-serve` |
+| **Agent Mode (TUI)** | Full terminal UI with split panels, diff viewer, streaming. Talk to any LLM. | `gocode chat` |
+| **Agent Mode (REPL)** | Line-based chat for scripts and pipes. | `gocode chat --no-tui` |
+| **API Server Mode** | Headless HTTP REST API for remote clients. | `gocode serve` |
+| **MCP Server Mode** | Plug into Cursor, Kiro, VS Code, Antigravity, or Claude Desktop. | `gocode mcp-serve` |
 
 You don't have to choose. You get both.
 
@@ -87,6 +89,84 @@ LSP integration for real renames and go-to-definition. AST-grep for structural c
 Type `/init-deep` and gocode scans your entire project, generating `AGENTS.md` context files in every directory. From that point on, every file the agent reads comes with automatic project context. No manual configuration. No prompt engineering. It just knows.
 
 > **[Read the full Advanced Features guide →](docs/advanced-features.md)**
+
+---
+
+## What's New in v0.6 — The Terminal OS
+
+We looked at what OpenCode and Claw Code built. Then we built it all in Go. In one binary.
+
+### 🖥 Full Terminal UI
+
+gocode now ships with a bubbletea-powered TUI — not a line-based REPL, a real terminal application. Split panels, colored diff viewer, mode switching, Go-themed design. It launches by default.
+
+- Chat panel on the left, git diff viewer on the right (Ctrl+D to toggle)
+- Tab to switch between Build mode (full access) and Plan mode (read-only)
+- Go-themed colors: gopher blue header, teal prompts, pink errors
+- 4 built-in themes: `golang`, `monokai`, `dracula`, `nord`
+
+```bash
+gocode chat --model sonnet              # TUI launches by default
+gocode chat --model gpt5 --theme nord   # with Nord theme
+gocode chat --no-tui                    # fall back to line-based REPL
+```
+
+### 🌐 HTTP API Server
+
+Run gocode as a headless server. Any client — web, mobile, IDE plugin — can connect.
+
+```bash
+gocode serve --addr :3000
+# POST /v1/chat, GET /v1/status, GET /v1/health
+```
+
+### 🔑 Remote Access with Auth Keys
+
+Generate, list, and delete API keys for secure remote access:
+
+```bash
+gocode auth generate my-phone
+gocode auth list
+gocode auth delete <id>
+```
+
+When keys exist, `gocode serve` requires `Authorization: Bearer <key>` on all endpoints.
+
+### 🖼 Multimodal Input
+
+Include an image path in your message — it gets base64-encoded and sent as vision input:
+
+```
+you> describe this screenshot.png
+```
+
+Supports `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`. Works in both REPL and TUI.
+
+### 🔧 More CLI Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `gocode serve` | Headless HTTP API server |
+| `gocode stats` | Usage statistics across all sessions |
+| `gocode export <id>` | Export session JSON |
+| `gocode import <file>` | Import session JSON |
+| `gocode pr` | Create GitHub PR via `gh` CLI |
+| `gocode github` | List GitHub issues via `gh` CLI |
+| `gocode auth generate/list/delete` | Manage remote access keys |
+
+### 📝 18 Slash Commands
+
+`/help` `/exit` `/clear` `/compact` `/cost` `/model` `/skill` `/plan` `/init-deep` `/diff` `/undo` `/redo` `/status` `/review` `/permissions` `/doctor` `/connect` `/share`
+
+### ⚡ Auto-Format After Edits
+
+When the agent edits a file, gocode automatically runs the appropriate formatter:
+- `.go` → `gofmt` / `goimports`
+- `.js/.ts` → `prettier`
+- `.py` → `black`
+- `.rs` → `rustfmt`
+
+> **[Read the full UX Features guide →](docs/ux-features.md)**
 
 ---
 
@@ -296,6 +376,13 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 - 💻 **Tmux sessions** — persistent terminal sessions for REPLs and debuggers
 - 🔌 **MCP client** — connect to external MCP servers for web search, docs, code search
 - 📚 **Auto-context** — `/init-deep` generates project-wide AGENTS.md context files
+- 🖥 **Full TUI** — bubbletea terminal UI with split panels, diff viewer, themes
+- 🖼 **Multimodal** — send images inline with your messages
+- 🌐 **HTTP API** — `gocode serve` for remote access from any client
+- 🔑 **Auth keys** — secure remote access with `gocode auth generate`
+- 🎨 **Themes** — golang, monokai, dracula, nord (or custom via JSON)
+- ✨ **Auto-format** — gofmt, prettier, black, rustfmt after every edit
+- 📊 **GitHub integration** — `gocode pr` and `gocode github` via gh CLI
 
 ### As an MCP Server (`gocode mcp-serve`)
 

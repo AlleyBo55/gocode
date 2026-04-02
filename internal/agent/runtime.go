@@ -188,13 +188,13 @@ func (r *ConversationRuntime) streamLoop(ctx context.Context) (<-chan apitypes.S
 						contentBlocks = append(contentBlocks, *ev.ContentBlock)
 					}
 				case "content_block_delta":
-					if ev.BlockDelta != nil && len(contentBlocks) > 0 {
-						last := &contentBlocks[len(contentBlocks)-1]
+					if ev.BlockDelta != nil && ev.Index < len(contentBlocks) {
+						block := &contentBlocks[ev.Index]
 						switch ev.BlockDelta.Kind {
 						case "text_delta":
-							last.Text += ev.BlockDelta.Text
+							block.Text += ev.BlockDelta.Text
 						case "input_json_delta":
-							last.Input = appendJSON(last.Input, ev.BlockDelta.PartialJSON)
+							block.Input = appendJSON(block.Input, ev.BlockDelta.PartialJSON)
 						}
 					}
 				case "message_delta":
@@ -321,7 +321,7 @@ func (r *ConversationRuntime) RestoreSession(messages []apitypes.InputMessage) {
 }
 
 func appendJSON(existing json.RawMessage, partial string) json.RawMessage {
-	if len(existing) == 0 {
+	if len(existing) == 0 || string(existing) == "{}" {
 		return json.RawMessage(partial)
 	}
 	return json.RawMessage(string(existing) + partial)

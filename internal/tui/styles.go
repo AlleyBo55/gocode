@@ -103,6 +103,30 @@ var (
 	gopherArt = string(goBlue)
 )
 
+// ApplyTheme updates all style variables to use the given theme's colors.
+func ApplyTheme(t Theme) {
+	goBlue = lipgloss.Color(t.Primary)
+	goTeal = lipgloss.Color(t.Secondary)
+	goPink = lipgloss.Color(t.Accent)
+	goDark = lipgloss.Color(t.Background)
+	goWhite = lipgloss.Color(t.Text)
+	goGray = lipgloss.Color(t.Dim)
+
+	headerStyle = lipgloss.NewStyle().Background(goBlue).Foreground(goBlack).Bold(true).Padding(0, 1)
+	statusBarStyle = lipgloss.NewStyle().Background(goDark).Foreground(goGray).Padding(0, 1)
+	modeBuildStyle = lipgloss.NewStyle().Background(goBlue).Foreground(goBlack).Bold(true).Padding(0, 1)
+	userStyle = lipgloss.NewStyle().Foreground(goTeal).Bold(true)
+	assistantStyle = lipgloss.NewStyle().Foreground(goBlue).Bold(true)
+	toolStyle = lipgloss.NewStyle().Foreground(goGray)
+	thinkingStyle = lipgloss.NewStyle().Foreground(goGray).Italic(true)
+	errorStyle = lipgloss.NewStyle().Foreground(goPink)
+	inputPromptStyle = lipgloss.NewStyle().Foreground(goTeal).Bold(true)
+	inputStyle = lipgloss.NewStyle().Foreground(goWhite)
+	helpStyle = lipgloss.NewStyle().Foreground(goGray)
+	helpKeyStyle = lipgloss.NewStyle().Foreground(goBlue).Bold(true)
+	diffHeaderStyle = lipgloss.NewStyle().Foreground(goBlue).Bold(true)
+}
+
 // GopherWelcome returns the Go gopher welcome message for empty chat state.
 func GopherWelcome() string {
 	gopher := lipgloss.NewStyle().Foreground(goBlue).Render(`

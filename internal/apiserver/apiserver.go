@@ -31,15 +31,36 @@ type StatusResponse struct {
 // NewHandler creates an http.Handler with all API routes.
 // The chatFn callback processes a user message and returns the assistant response text.
 // The statusFn callback returns (messageCount, modelName).
-func NewHandler(cfg Config, chatFn func(msg string) (string, error), statusFn func() (int, string)) http.Handler {
+// authValidator is optional — if non-nil, it checks Bearer tokens on non-health endpoints.
+func NewHandler(cfg Config, chatFn func(msg string) (string, error), statusFn func() (int, string), authValidator ...func(string) bool) http.Handler {
 	mux := http.NewServeMux()
+
+	// Auth middleware: wraps handlers that need authentication.
+	requireAuth := func(next http.HandlerFunc) http.HandlerFunc {
+		if len(authValidator) == 0 || authValidator[0] == nil {
+			return next
+		}
+		validate := authValidator[0]
+		return func(w http.ResponseWriter, r *http.Request) {
+			auth := r.Header.Get("Authorization")
+			if auth == "" || len(auth) < 8 || auth[:7] != "Bearer " {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			if !validate(auth[7:]) {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			next(w, r)
+		}
+	}
 
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": cfg.Version})
 	})
 
-	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/chat", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -61,9 +82,9 @@ func NewHandler(cfg Config, chatFn func(msg string) (string, error), statusFn fu
 			return
 		}
 		json.NewEncoder(w).Encode(ChatResponse{Response: resp})
-	})
+	}))
 
-	mux.HandleFunc("/v1/status", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/status", requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
@@ -71,7 +92,7 @@ func NewHandler(cfg Config, chatFn func(msg string) (string, error), statusFn fu
 		msgs, model := statusFn()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(StatusResponse{Messages: msgs, Model: model})
-	})
+	}))
 
 	return mux
 }
