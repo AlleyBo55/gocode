@@ -12,6 +12,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
+	"github.com/AlleyBo55/gocode/internal/skills"
 )
 
 // REPLConfig holds configuration for the REPL display.
@@ -28,16 +29,18 @@ type REPL struct {
 	writer  io.Writer
 	display *Display
 	config  REPLConfig
+	skills  []skills.Skill
 }
 
 // NewREPL creates a new REPL.
-func NewREPL(rt *agent.ConversationRuntime, r io.Reader, w io.Writer, cfg REPLConfig) *REPL {
+func NewREPL(rt *agent.ConversationRuntime, r io.Reader, w io.Writer, cfg REPLConfig, sk []skills.Skill) *REPL {
 	return &REPL{
 		runtime: rt,
 		reader:  r,
 		writer:  w,
 		display: NewDisplay(w),
 		config:  cfg,
+		skills:  sk,
 	}
 }
 
@@ -90,6 +93,9 @@ func (r *REPL) Run(ctx context.Context) error {
 				fmt.Fprintf(r.writer, "Created %d AGENTS.md files, skipped %d existing.\n", len(report.Created), len(report.Skipped))
 			}
 			continue
+		case CmdSkill:
+			r.handleSkillCommand(input)
+			continue
 		}
 
 		// Show spinner while waiting for LLM response
@@ -116,6 +122,59 @@ func (r *REPL) Run(ctx context.Context) error {
 		r.display.RenderResponse(resp)
 		fmt.Fprintln(r.writer)
 	}
+}
+
+// handleSkillCommand processes the /skill slash command.
+// With no arguments it lists all available skills.
+// With a skill name it activates that skill by injecting its system prompt.
+func (r *REPL) handleSkillCommand(input string) {
+	trimmed := strings.TrimSpace(input)
+	arg := strings.TrimSpace(strings.TrimPrefix(trimmed, "/skill"))
+
+	if arg == "" {
+		// List all available skills.
+		if len(r.skills) == 0 {
+			fmt.Fprintln(r.writer, "No skills available.")
+			return
+		}
+		fmt.Fprintln(r.writer, "Available skills:")
+		for _, s := range r.skills {
+			fmt.Fprintf(r.writer, "  %s%-20s%s %s\n", cGreen, s.Name, ansiReset, truncateSkillDesc(s.SystemPrompt, 80))
+		}
+		return
+	}
+
+	// Look up the skill by name.
+	var found *skills.Skill
+	for i := range r.skills {
+		if r.skills[i].Name == arg {
+			found = &r.skills[i]
+			break
+		}
+	}
+	if found == nil {
+		fmt.Fprintf(r.writer, "Unknown skill: %s. Use /skill to list available skills.\n", arg)
+		return
+	}
+
+	// Activate by injecting the skill's system prompt as a user message.
+	activationMsg := fmt.Sprintf("The following skill has been activated: %s. Apply these guidelines:\n\n%s", found.Name, found.SystemPrompt)
+	_, err := r.runtime.SendUserMessage(context.Background(), activationMsg)
+	if err != nil {
+		fmt.Fprintf(r.writer, "Error activating skill: %v\n", err)
+		return
+	}
+	fmt.Fprintf(r.writer, "Skill %s%s%s activated.\n", cGreen+ansiBold, found.Name, ansiReset)
+}
+
+// truncateSkillDesc shortens a string to maxLen characters, appending "..." if truncated.
+func truncateSkillDesc(s string, maxLen int) string {
+	// Collapse to single line for display.
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // TerminalToolCallback updates the terminal during tool execution.

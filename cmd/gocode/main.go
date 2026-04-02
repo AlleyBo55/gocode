@@ -521,6 +521,7 @@ func main() {
 			maxTokens, _ := cmd.Flags().GetInt("max-tokens")
 			apiKey, _ := cmd.Flags().GetString("api-key")
 			hashlineEnabled, _ := cmd.Flags().GetBool("hashline")
+			skillName, _ := cmd.Flags().GetString("skill")
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
@@ -548,9 +549,17 @@ func main() {
 			for _, e := range skillErrs {
 				log.Printf("[skills] %v", e)
 			}
-			_ = loadedSkills
 
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
+
+			// If --skill flag is provided, prepend the skill's system prompt
+			if skillName != "" {
+				sk, ok := skillLoader.GetSkill(skillName)
+				if !ok {
+					return fmt.Errorf("unknown skill: %s", skillName)
+				}
+				systemPrompt = sk.SystemPrompt + "\n\n" + systemPrompt
+			}
 
 			prompter := &repl.TerminalPermissionPrompter{
 				Scanner: bufio.NewScanner(os.Stdin),
@@ -578,7 +587,7 @@ func main() {
 				Version:  version,
 				Model:    resolvedModel,
 				MaxTurns: maxTurns,
-			})
+			}, loadedSkills)
 			return r.Run(context.Background())
 		},
 	}
@@ -587,6 +596,7 @@ func main() {
 	chatCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
 	chatCmd.Flags().String("api-key", "", "API key (overrides env vars)")
 	chatCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
+	chatCmd.Flags().String("skill", "", "Activate a skill by name (prepends skill system prompt)")
 	rootCmd.AddCommand(chatCmd)
 
 	// 23. prompt — one-shot agent mode
@@ -601,6 +611,7 @@ func main() {
 			apiKey, _ := cmd.Flags().GetString("api-key")
 			noStream, _ := cmd.Flags().GetBool("no-stream")
 			hashlineEnabled, _ := cmd.Flags().GetBool("hashline")
+			skillName, _ := cmd.Flags().GetString("skill")
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
@@ -624,13 +635,21 @@ func main() {
 
 			// Phase 2: load skills on startup
 			skillLoader := skills.NewSkillLoader("")
-			loadedSkills, skillErrs := skillLoader.LoadAll()
+			_, skillErrs := skillLoader.LoadAll()
 			for _, e := range skillErrs {
 				log.Printf("[skills] %v", e)
 			}
-			_ = loadedSkills
 
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
+
+			// If --skill flag is provided, prepend the skill's system prompt
+			if skillName != "" {
+				sk, ok := skillLoader.GetSkill(skillName)
+				if !ok {
+					return fmt.Errorf("unknown skill: %s", skillName)
+				}
+				systemPrompt = sk.SystemPrompt + "\n\n" + systemPrompt
+			}
 
 			// Use FallbackProvider (which implements Provider) for the runtime
 			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
@@ -655,6 +674,7 @@ func main() {
 	promptCmd.Flags().String("api-key", "", "API key (overrides env vars)")
 	promptCmd.Flags().Bool("no-stream", false, "Disable streaming output")
 	promptCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
+	promptCmd.Flags().String("skill", "", "Activate a skill by name (prepends skill system prompt)")
 	rootCmd.AddCommand(promptCmd)
 
 	// 21. mcp-serve

@@ -16,12 +16,18 @@ const (
 	CmdCost
 	CmdPlan
 	CmdInitDeep
+	CmdSkill
 )
 
 // ParseSlashCommand checks if input is a slash command.
 func ParseSlashCommand(input string) SlashCommand {
 	trimmed := strings.TrimSpace(input)
-	switch strings.ToLower(trimmed) {
+	lower := strings.ToLower(trimmed)
+	// Handle commands that may have arguments.
+	if lower == "/skill" || strings.HasPrefix(lower, "/skill ") {
+		return CmdSkill
+	}
+	switch lower {
 	case "/exit":
 		return CmdExit
 	case "/clear":
