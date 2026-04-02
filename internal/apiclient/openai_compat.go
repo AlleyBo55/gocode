@@ -188,10 +188,16 @@ func buildChatCompletionRequest(req apitypes.MessageRequest) map[string]interfac
 		messages = append(messages, translateMessage(msg)...)
 	}
 	payload := map[string]interface{}{
-		"model":      req.Model,
-		"max_tokens": req.MaxTokens,
-		"messages":   messages,
-		"stream":     req.Stream,
+		"model":    req.Model,
+		"messages": messages,
+		"stream":   req.Stream,
+	}
+	// Newer OpenAI models (o1, o3, o4, gpt-5.x) require max_completion_tokens
+	// instead of max_tokens. Other providers and older models use max_tokens.
+	if usesMaxCompletionTokens(req.Model) {
+		payload["max_completion_tokens"] = req.MaxTokens
+	} else {
+		payload["max_tokens"] = req.MaxTokens
 	}
 	if len(req.Tools) > 0 {
 		tools := make([]map[string]interface{}, len(req.Tools))
@@ -204,6 +210,19 @@ func buildChatCompletionRequest(req apitypes.MessageRequest) map[string]interfac
 		payload["tool_choice"] = openaiToolChoice(req.ToolChoice)
 	}
 	return payload
+}
+
+// usesMaxCompletionTokens returns true for models that require max_completion_tokens
+// instead of max_tokens (newer OpenAI reasoning/frontier models).
+func usesMaxCompletionTokens(model string) bool {
+	m := strings.ToLower(model)
+	return strings.HasPrefix(m, "o1") ||
+		strings.HasPrefix(m, "o3") ||
+		strings.HasPrefix(m, "o4") ||
+		strings.Contains(m, "gpt-5") ||
+		strings.Contains(m, "gpt-4.1") ||
+		strings.Contains(m, "gpt-4o-2024-12") ||
+		strings.Contains(m, "gpt-4o-2025")
 }
 
 func translateMessage(msg apitypes.InputMessage) []map[string]interface{} {
