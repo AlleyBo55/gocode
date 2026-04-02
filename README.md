@@ -60,50 +60,18 @@ You don't have to choose. You get both.
 
 ---
 
-## What's New in v0.3.0 — The Agent OS
+## What's New in v0.7.0
 
-We didn't just add features. We changed what a terminal agent can be.
-
-Most coding agents are single-threaded, single-model, and fragile. They crash when the context window fills up. They stop when the API rate-limits. They can't delegate. They can't plan. They can't talk to your language server.
-
-gocode v0.3.0 fixes all of that.
-
-### 🧠 It Never Stops
-
-Your primary model hits a rate limit? gocode silently falls through to the next model in the chain. Context window full? It compacts the conversation and keeps going. API down? Exponential backoff, three retries, automatic recovery. You keep working. The agent keeps working.
-
-### 🤝 It Delegates
-
-One agent is a tool. A team of agents is a workforce. The orchestrator breaks complex tasks into pieces and hands them to specialists — a deep researcher, a planner, a debugger — each with its own model, its own context, its own tool permissions. Up to five agents running in parallel, results flowing back through Go channels.
-
-### 📋 It Plans Before It Codes
-
-Type `/plan` and the agent interviews you. What's the scope? What are the constraints? What could go wrong? It produces a structured plan — summary, ambiguities, steps, estimated scope — and waits for your approval before touching a single file.
-
-### 🔧 It Has IDE-Level Tools
-
-LSP integration for real renames and go-to-definition. AST-grep for structural code search. Tmux for persistent terminal sessions. MCP client for connecting to any external tool server. These aren't wrappers around grep. These are the real thing.
-
-### 📚 It Understands Your Project
-
-Type `/init-deep` and gocode scans your entire project, generating `AGENTS.md` context files in every directory. From that point on, every file the agent reads comes with automatic project context. No manual configuration. No prompt engineering. It just knows.
-
-> **[Read the full Advanced Features guide →](docs/advanced-features.md)**
-
----
-
-## What's New in v0.6 — The Terminal OS
-
-We looked at what OpenCode and Claw Code built. Then we built it all in Go. In one binary.
+We took the best ideas from Claude Code, OpenCode, and Claw Code — and built them all in Go. One binary. Every feature.
 
 ### 🖥 Full Terminal UI
 
-gocode now ships with a bubbletea-powered TUI — not a line-based REPL, a real terminal application. Split panels, colored diff viewer, mode switching, Go-themed design. It launches by default.
+A bubbletea-powered TUI launches by default. Split panels, colored diff viewer, mode switching, Go-themed design.
 
 - Chat panel on the left, git diff viewer on the right (Ctrl+D to toggle)
 - Tab to switch between Build mode (full access) and Plan mode (read-only)
-- Go-themed colors: gopher blue header, teal prompts, pink errors
 - 4 built-in themes: `golang`, `monokai`, `dracula`, `nord`
+- Custom themes via `.gocode/theme.json`
 
 ```bash
 gocode chat --model sonnet              # TUI launches by default
@@ -111,62 +79,45 @@ gocode chat --model gpt5 --theme nord   # with Nord theme
 gocode chat --no-tui                    # fall back to line-based REPL
 ```
 
-### 🌐 HTTP API Server
+### 🧠 It Never Stops
 
-Run gocode as a headless server. Any client — web, mobile, IDE plugin — can connect.
+Model hits a rate limit? Falls through to the next in the chain. Context window full? Compacts and keeps going. API down? Exponential backoff, three retries, automatic recovery.
+
+### 🤝 It Delegates
+
+The orchestrator breaks complex tasks into pieces and hands them to specialists — a deep researcher, a planner, a debugger — each with its own model, context, and tool permissions. Up to five agents running in parallel.
+
+### 🔧 IDE-Level Tools + Auto-Format
+
+LSP integration, AST-grep, tmux sessions, MCP client. Plus auto-format after every edit — gofmt, prettier, black, rustfmt.
+
+### 🌐 HTTP API Server + Remote Access
 
 ```bash
-gocode serve --addr :3000
-# POST /v1/chat, GET /v1/status, GET /v1/health
+gocode serve --addr :3000           # headless API server
+gocode auth generate my-phone       # secure remote access
 ```
-
-### 🔑 Remote Access with Auth Keys
-
-Generate, list, and delete API keys for secure remote access:
-
-```bash
-gocode auth generate my-phone
-gocode auth list
-gocode auth delete <id>
-```
-
-When keys exist, `gocode serve` requires `Authorization: Bearer <key>` on all endpoints.
 
 ### 🖼 Multimodal Input
 
-Include an image path in your message — it gets base64-encoded and sent as vision input:
+Include an image path in your message — it gets base64-encoded and sent as vision input. Works in both REPL and TUI.
 
-```
-you> describe this screenshot.png
-```
+### 📋 18 Slash Commands
 
-Supports `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`. Works in both REPL and TUI.
+`/help` `/exit` `/clear` `/compact` `/cost` `/model` `/skill` `/plan` `/init-deep` `/diff` `/undo` `/redo` `/status` `/review` `/permissions` `/doctor` `/connect` `/share`
 
-### 🔧 More CLI Commands
+### 🔧 CLI Commands
 
 | Command | What It Does |
 |---------|-------------|
 | `gocode serve` | Headless HTTP API server |
 | `gocode stats` | Usage statistics across all sessions |
-| `gocode export <id>` | Export session JSON |
-| `gocode import <file>` | Import session JSON |
+| `gocode export/import` | Session import/export |
 | `gocode pr` | Create GitHub PR via `gh` CLI |
 | `gocode github` | List GitHub issues via `gh` CLI |
-| `gocode auth generate/list/delete` | Manage remote access keys |
+| `gocode auth` | Manage remote access keys |
 
-### 📝 18 Slash Commands
-
-`/help` `/exit` `/clear` `/compact` `/cost` `/model` `/skill` `/plan` `/init-deep` `/diff` `/undo` `/redo` `/status` `/review` `/permissions` `/doctor` `/connect` `/share`
-
-### ⚡ Auto-Format After Edits
-
-When the agent edits a file, gocode automatically runs the appropriate formatter:
-- `.go` → `gofmt` / `goimports`
-- `.js/.ts` → `prettier`
-- `.py` → `black`
-- `.rs` → `rustfmt`
-
-> **[Read the full UX Features guide →](docs/ux-features.md)**
+> **[Advanced Features →](docs/advanced-features.md)** · **[UX Features →](docs/ux-features.md)**
 
 ---
 
