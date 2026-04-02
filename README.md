@@ -90,6 +90,68 @@ Type `/init-deep` and gocode scans your entire project, generating `AGENTS.md` c
 
 ---
 
+## Skills — Expertise on Demand
+
+Here's the thing about coding agents: they're generalists. They know a little about everything and a lot about nothing. That's fine for "add a comment to line 42." It's not fine for "build me a pixel-perfect clone of this website" or "refactor this Go codebase to follow idiomatic error handling."
+
+Skills change that. One flag, and your agent becomes a specialist.
+
+```bash
+gocode chat --skill golang-best-practices    # now it writes Go like a senior engineer
+gocode chat --skill nothing-design           # now it designs like Teenage Engineering
+gocode chat --skill clone-website            # now it reverse-engineers websites
+```
+
+Or switch mid-session:
+
+```
+you> /skill react-best-practices
+Skill react-best-practices activated.
+you> review this component for performance issues
+```
+
+### 8 Built-in Skills
+
+| Skill | What It Does | Activate With |
+|-------|-------------|---------------|
+| `git-master` | Atomic commits, interactive rebase, clean history | `--skill git-master` |
+| `frontend-ui-ux` | Design-first UI development, accessibility, semantic HTML | `--skill frontend-ui-ux` |
+| `nothing-design` | Nothing-inspired monochrome design system. Swiss typography, OLED blacks, mechanical precision. | `--skill nothing-design` |
+| `golang-best-practices` | Idiomatic Go — code style, error handling, testing patterns, naming conventions | `--skill golang-best-practices` |
+| `clone-website` | Pixel-perfect website cloning. Extract CSS, download assets, rebuild in Next.js. | `--skill clone-website` |
+| `nextjs-best-practices` | Next.js 15+ patterns — RSC boundaries, async APIs, data fetching, route handlers | `--skill nextjs-best-practices` |
+| `react-best-practices` | React performance optimization — eliminate waterfalls, bundle size, re-render patterns | `--skill react-best-practices` |
+| `web-design-guidelines` | Accessibility audit, responsive design, interaction states, WCAG compliance | `--skill web-design-guidelines` |
+
+### Create Your Own
+
+Drop a JSON file in `.gocode/skills/`:
+
+```json
+{
+  "name": "my-skill",
+  "system_prompt": "You are an expert in...",
+  "tool_permissions": ["bashtool", "filereadtool", "fileedittool"]
+}
+```
+
+It loads automatically on next startup.
+
+### Community Skills — Standing on the Shoulders of Giants
+
+The built-in skills are distilled from these open-source projects. We're grateful to the authors who shared their expertise with the community:
+
+| Skill | Inspired By | Author |
+|-------|------------|--------|
+| `nothing-design` | [nothing-design-skill](https://github.com/dominikmartn/nothing-design-skill) | [@dominikmartn](https://github.com/dominikmartn) |
+| `golang-best-practices` | [cc-skills-golang](https://github.com/samber/cc-skills-golang) | [@samber](https://github.com/samber) |
+| `clone-website` | [ai-website-cloner-template](https://github.com/JCodesMore/ai-website-cloner-template) | [@JCodesMore](https://github.com/JCodesMore) |
+| `nextjs-best-practices` | [claude-code-nextjs-skills](https://github.com/laguagu/claude-code-nextjs-skills) | [@laguagu](https://github.com/laguagu) |
+| `react-best-practices` | [claude-code-nextjs-skills](https://github.com/laguagu/claude-code-nextjs-skills) | [@laguagu](https://github.com/laguagu) |
+| `web-design-guidelines` | [claude-code-nextjs-skills](https://github.com/laguagu/claude-code-nextjs-skills) | [@laguagu](https://github.com/laguagu) |
+
+---
+
 ## Supported Models
 
 Use any of these out of the box. Just set the right API key and go.
@@ -169,7 +231,7 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 | MCP tools | **14 built-in + external via MCP client** |
 | Internal packages | **38** |
 | Built-in agent profiles | **4** (coordinator, deep-worker, planner, debugger) |
-| Built-in skills | **2** (git-master, frontend-ui-ux) |
+| Built-in skills | **8** (git-master, frontend-ui-ux, nothing-design, golang, clone-website, nextjs, react, web-design) |
 | Max concurrent background agents | **5** |
 
 ---
@@ -215,7 +277,7 @@ Open a PR. Start a discussion. File an issue. Every contribution makes gocode be
 | Multi-agent orchestration | No | **Yes (4 built-in profiles)** |
 | Model fallback | No | **Yes (automatic failover)** |
 | Planning mode | No | **Yes (`/plan` command)** |
-| Skills system | No | **Yes (JSON profiles)** |
+| Skills system | No | **Yes (8 built-in + custom JSON profiles)** |
 | LSP integration | No | **Yes (rename, definition, references)** |
 | MCP client | No | **Yes (connect to external servers)** |
 
@@ -225,7 +287,7 @@ Open a PR. Start a discussion. File an issue. Every contribution makes gocode be
 
 gocode is the **Go version of Claude Code** — if you searched for any of these terms, you found the right project:
 
-`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `claude code rewrite` · `claude code port` · `go claude code` · `golang claude code` · `claude code cli golang` · `ai coding agent go` · `ai coding agent golang` · `go ai agent` · `golang ai agent` · `mcp server go` · `mcp server golang` · `mcp golang` · `model context protocol go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude desktop mcp go` · `go ai coding assistant` · `golang ai coding tool` · `claude code go port` · `claude code go version` · `claude code reimplementation` · `open source claude code` · `claude code alternative golang` · `fast ai agent go` · `lightweight ai agent` · `single binary ai agent` · `multi model ai agent` · `gpt4o coding agent` · `gemini coding agent` · `grok coding agent` · `multi agent orchestration go` · `agent fallback chain` · `lsp integration go agent` · `ast grep go` · `mcp client golang` · `ai planning agent` · `agent skills system` · `background agents golang`
+`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `claude code rewrite` · `claude code port` · `go claude code` · `golang claude code` · `claude code cli golang` · `ai coding agent go` · `ai coding agent golang` · `go ai agent` · `golang ai agent` · `mcp server go` · `mcp server golang` · `mcp golang` · `model context protocol go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude desktop mcp go` · `go ai coding assistant` · `golang ai coding tool` · `claude code go port` · `claude code go version` · `claude code reimplementation` · `open source claude code` · `claude code alternative golang` · `fast ai agent go` · `lightweight ai agent` · `single binary ai agent` · `multi model ai agent` · `gpt4o coding agent` · `gemini coding agent` · `grok coding agent` · `multi agent orchestration go` · `agent fallback chain` · `lsp integration go agent` · `ast grep go` · `mcp client golang` · `ai planning agent` · `agent skills system` · `background agents golang` · `claude code skills` · `ai agent skills` · `coding agent skills golang` · `nothing design system ai` · `website cloner ai agent` · `nextjs best practices agent` · `react performance agent` · `golang best practices agent` · `web design review ai` · `pixel perfect clone agent` · `ai coding assistant terminal` · `claude code go alternative` · `openai agent go` · `gemini agent golang` · `grok agent terminal` · `autonomous coding agent` · `ai pair programmer terminal` · `claude code replacement` · `claude code open source go` · `ai agent with skills` · `domain expert ai agent` · `go ai coding tool cli`
 
 ---
 
