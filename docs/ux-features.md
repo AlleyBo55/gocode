@@ -28,6 +28,11 @@ The spinner shows while waiting for the first token. Once text starts flowing, i
 | `/plan` | Start an interview-style planning session |
 | `/init-deep` | Generate AGENTS.md context files |
 | `/diff` | Show git diff of changes made this session |
+| `/undo` | Revert all uncommitted file changes |
+| `/status` | Show session stats — model, messages, tokens, turns, CWD, branch |
+| `/review` | Ask the agent to review its own recent changes |
+| `/permissions` | Show current permission mode |
+| `/doctor` | Check environment — tools, API keys, project config |
 
 ### /compact
 
@@ -128,6 +133,89 @@ Tokens: 12,450 in / 3,200 out (15,650 total, 5 turns) — est. $0.0854
 ```
 
 Pricing is a blended average ($3/1M input, $15/1M output). Actual cost varies by provider and model.
+
+---
+
+## Ctrl+C Interrupt
+
+Press Ctrl+C during a streaming response to cancel the current request. The REPL stays alive — you can immediately type a new message. No more killing the whole process to stop a runaway response.
+
+---
+
+## /undo — Revert Changes
+
+Made a mess? `/undo` reverts all uncommitted file changes:
+
+```
+you> /undo
+Reverting:
+ main.go | 3 +++
+ utils.go | 1 -
+Changes reverted.
+```
+
+Uses `git checkout -- .` under the hood. Only works in git repos.
+
+---
+
+## /status — Session Stats
+
+See everything about your current session at a glance:
+
+```
+you> /status
+Model:    claude-sonnet-4-6
+Messages: 12
+Tokens:   8,450 in / 2,100 out
+Turns:    4 / 30 max
+CWD:      /Users/you/project
+Branch:   feat/new-feature
+```
+
+---
+
+## /review — Self-Review
+
+Ask the agent to review its own changes:
+
+```
+you> /review
+```
+
+This grabs the current `git diff`, injects it as a message, and asks the agent to point out issues. Like having a code reviewer built into your terminal.
+
+---
+
+## /doctor — Environment Check
+
+Diagnose your setup:
+
+```
+you> /doctor
+Checking environment...
+  ✓ git: git version 2.43.0
+  ✓ go: go version go1.22.0 darwin/arm64
+  ✗ tmux: not found
+  ✗ ast-grep: not found
+  ✓ ANTHROPIC_API_KEY: set
+  - OPENAI_API_KEY: not set
+  ✓ GOCODE.md: found
+```
+
+---
+
+## CLI Flags
+
+| Flag | Command | Description |
+|------|---------|-------------|
+| `--dangerously-skip-permissions` | `chat` | Skip all permission prompts (full access) |
+| `--print` | `chat`, `prompt` | Print the system prompt and exit |
+| `--verbose` | `chat`, `prompt` | Log model, turns, and token config at startup |
+| `--no-project-config` | `chat` | Skip loading GOCODE.md/CLAUDE.md |
+| `--allowedTools` | `chat` | Whitelist specific tools |
+| `--disallowedTools` | `chat` | Blacklist specific tools |
+| `--hashline` | `chat`, `prompt` | Enable hash-anchored file I/O |
+| `--skill` | `chat`, `prompt` | Activate a skill by name |
 
 ---
 

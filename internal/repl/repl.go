@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
@@ -105,22 +106,91 @@ func (r *REPL) Run(ctx context.Context) error {
 			continue
 		case CmdHelp:
 			fmt.Fprintln(r.writer, "Available commands:")
-			fmt.Fprintln(r.writer, "  /help       Show this help")
-			fmt.Fprintln(r.writer, "  /exit       Quit session")
-			fmt.Fprintln(r.writer, "  /clear      Reset conversation")
-			fmt.Fprintln(r.writer, "  /compact    Compact conversation history")
-			fmt.Fprintln(r.writer, "  /cost       Show token usage and cost")
-			fmt.Fprintln(r.writer, "  /model      Show or switch model")
-			fmt.Fprintln(r.writer, "  /skill      List or activate skills")
-			fmt.Fprintln(r.writer, "  /plan       Start planning session")
-			fmt.Fprintln(r.writer, "  /init-deep  Generate AGENTS.md files")
-			fmt.Fprintln(r.writer, "  /diff       Show git diff of changes")
+			fmt.Fprintln(r.writer, "  /help        Show this help")
+			fmt.Fprintln(r.writer, "  /exit        Quit session")
+			fmt.Fprintln(r.writer, "  /clear       Reset conversation")
+			fmt.Fprintln(r.writer, "  /compact     Compact conversation history")
+			fmt.Fprintln(r.writer, "  /cost        Show token usage and cost")
+			fmt.Fprintln(r.writer, "  /model       Show or switch model")
+			fmt.Fprintln(r.writer, "  /skill       List or activate skills")
+			fmt.Fprintln(r.writer, "  /plan        Start planning session")
+			fmt.Fprintln(r.writer, "  /init-deep   Generate AGENTS.md files")
+			fmt.Fprintln(r.writer, "  /diff        Show git diff of changes")
+			fmt.Fprintln(r.writer, "  /undo        Revert uncommitted changes")
+			fmt.Fprintln(r.writer, "  /status      Show session stats")
+			fmt.Fprintln(r.writer, "  /review      Ask agent to review changes")
+			fmt.Fprintln(r.writer, "  /permissions Show permission mode")
+			fmt.Fprintln(r.writer, "  /doctor      Check environment")
 			continue
 		case CmdModel:
 			r.handleModelCommand(input)
 			continue
 		case CmdDiff:
 			r.handleDiffCommand()
+			continue
+		case CmdUndo:
+			out, err := exec.Command("git", "diff", "--stat").Output()
+			if err != nil || strings.TrimSpace(string(out)) == "" {
+				fmt.Fprintln(r.writer, "Nothing to undo.")
+				continue
+			}
+			fmt.Fprintf(r.writer, "Reverting:\n%s", string(out))
+			exec.Command("git", "checkout", "--", ".").Run()
+			fmt.Fprintln(r.writer, "Changes reverted.")
+			continue
+		case CmdStatus:
+			cwd, _ := os.Getwd()
+			usage := r.runtime.GetUsage()
+			msgs := len(r.runtime.GetSession())
+			fmt.Fprintf(r.writer, "Model:    %s\n", r.config.Model)
+			fmt.Fprintf(r.writer, "Messages: %d\n", msgs)
+			fmt.Fprintf(r.writer, "Tokens:   %d in / %d out\n", usage.InputTokens, usage.OutputTokens)
+			fmt.Fprintf(r.writer, "Turns:    %d / %d max\n", usage.Turns, r.config.MaxTurns)
+			fmt.Fprintf(r.writer, "CWD:      %s\n", cwd)
+			if branch, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+				fmt.Fprintf(r.writer, "Branch:   %s\n", strings.TrimSpace(string(branch)))
+			}
+			continue
+		case CmdReview:
+			diff, _ := exec.Command("git", "diff").Output()
+			if len(diff) == 0 {
+				fmt.Fprintln(r.writer, "No changes to review.")
+				continue
+			}
+			// Inject the diff as a user message asking for review — fall through to message handler
+			input = fmt.Sprintf("Review these changes I just made and point out any issues:\n\n```diff\n%s\n```", string(diff))
+		case CmdPermissions:
+			fmt.Fprintln(r.writer, "Permission mode: workspace-write (prompts before tool execution)")
+			fmt.Fprintln(r.writer, "Use --dangerously-skip-permissions to disable all prompts.")
+			continue
+		case CmdDoctor:
+			fmt.Fprintln(r.writer, "Checking environment...")
+			checks := []struct{ name, cmd string }{
+				{"git", "git --version"},
+				{"go", "go version"},
+				{"tmux", "tmux -V"},
+				{"ast-grep", "ast-grep --version"},
+			}
+			for _, c := range checks {
+				parts := strings.Fields(c.cmd)
+				if out, err := exec.Command(parts[0], parts[1:]...).Output(); err == nil {
+					fmt.Fprintf(r.writer, "  ✓ %s: %s\n", c.name, strings.TrimSpace(string(out)))
+				} else {
+					fmt.Fprintf(r.writer, "  ✗ %s: not found\n", c.name)
+				}
+			}
+			for _, env := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"} {
+				if os.Getenv(env) != "" {
+					fmt.Fprintf(r.writer, "  ✓ %s: set\n", env)
+				} else {
+					fmt.Fprintf(r.writer, "  - %s: not set\n", env)
+				}
+			}
+			for _, name := range []string{"GOCODE.md", "CLAUDE.md"} {
+				if _, err := os.Stat(name); err == nil {
+					fmt.Fprintf(r.writer, "  ✓ %s: found\n", name)
+				}
+			}
 			continue
 		}
 
@@ -133,10 +203,24 @@ func (r *REPL) Run(ctx context.Context) error {
 			tcb.Spinner = spin
 		}
 
+		// Set up Ctrl+C to cancel the current request without killing the process
+		msgCtx, cancel := context.WithCancel(ctx)
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt)
+		go func() {
+			select {
+			case <-sigCh:
+				cancel()
+			case <-msgCtx.Done():
+			}
+			signal.Stop(sigCh)
+		}()
+
 		spin.Start()
-		eventCh, err := r.runtime.StreamUserMessage(ctx, input)
+		eventCh, err := r.runtime.StreamUserMessage(msgCtx, input)
 		if err != nil {
 			spin.Stop()
+			cancel()
 			r.display.Error(err)
 			fmt.Fprintln(r.writer)
 			continue
@@ -154,6 +238,7 @@ func (r *REPL) Run(ctx context.Context) error {
 		if firstToken {
 			spin.Stop()
 		} // no text was streamed
+		cancel()
 		fmt.Fprintln(r.writer)
 	}
 }
@@ -353,6 +438,9 @@ func RunOneShot(ctx context.Context, rt *agent.ConversationRuntime, prompt strin
 	return nil
 }
 
+// SkipProjectConfig disables loading GOCODE.md/CLAUDE.md into the system prompt.
+var SkipProjectConfig bool
+
 // BuildSystemPrompt constructs the system prompt for the agent.
 // Modeled after Claude Code's agentic behavior — proactive, autonomous, thorough.
 func BuildSystemPrompt(tools []apitypes.ToolDef) string {
@@ -437,11 +525,13 @@ When making code changes:
 	}
 
 	// Load project config (CLAUDE.md or GOCODE.md)
-	for _, name := range []string{"GOCODE.md", "CLAUDE.md"} {
-		if data, err := os.ReadFile(name); err == nil {
-			sb.WriteString("\n\n# Project Instructions (from " + name + ")\n\n")
-			sb.WriteString(string(data))
-			break
+	if !SkipProjectConfig {
+		for _, name := range []string{"GOCODE.md", "CLAUDE.md"} {
+			if data, err := os.ReadFile(name); err == nil {
+				sb.WriteString("\n\n# Project Instructions (from " + name + ")\n\n")
+				sb.WriteString(string(data))
+				break
+			}
 		}
 	}
 

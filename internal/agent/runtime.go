@@ -294,6 +294,9 @@ func (r *ConversationRuntime) GetToolCb() ToolCallback { return r.toolCb }
 // GetSession returns the current conversation session.
 func (r *ConversationRuntime) GetSession() []apitypes.InputMessage { return r.session }
 
+// GetModel returns the model name configured for this runtime.
+func (r *ConversationRuntime) GetModel() string { return r.model }
+
 // RestoreSession replaces the current session with a saved one.
 func (r *ConversationRuntime) RestoreSession(messages []apitypes.InputMessage) {
 	r.session = messages

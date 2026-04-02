@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -39,7 +40,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.4.0"
+var version = "v0.4.1"
 
 // stdRecoveryLogger logs recovery events to stderr via the standard log package.
 type stdRecoveryLogger struct{}
@@ -522,6 +523,21 @@ func main() {
 			apiKey, _ := cmd.Flags().GetString("api-key")
 			hashlineEnabled, _ := cmd.Flags().GetBool("hashline")
 			skillName, _ := cmd.Flags().GetString("skill")
+			skipPerms, _ := cmd.Flags().GetBool("dangerously-skip-permissions")
+			printPrompt, _ := cmd.Flags().GetBool("print")
+			verbose, _ := cmd.Flags().GetBool("verbose")
+			noProjectConfig, _ := cmd.Flags().GetBool("no-project-config")
+			allowedTools, _ := cmd.Flags().GetStringSlice("allowedTools")
+			disallowedTools, _ := cmd.Flags().GetStringSlice("disallowedTools")
+
+			permMode := agent.WorkspaceWrite
+			if skipPerms {
+				permMode = agent.DangerFullAccess
+			}
+
+			if noProjectConfig {
+				repl.SkipProjectConfig = true
+			}
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
@@ -566,6 +582,23 @@ func main() {
 				systemPrompt = sk.SystemPrompt + "\n\n" + systemPrompt
 			}
 
+			// Append tool allow/disallow info to system prompt
+			if len(allowedTools) > 0 {
+				systemPrompt += fmt.Sprintf("\n\n# Allowed Tools\nOnly use these tools: %s\n", strings.Join(allowedTools, ", "))
+			}
+			if len(disallowedTools) > 0 {
+				systemPrompt += fmt.Sprintf("\n\n# Disallowed Tools\nDo NOT use these tools: %s\n", strings.Join(disallowedTools, ", "))
+			}
+
+			if printPrompt {
+				fmt.Println(systemPrompt)
+				return nil
+			}
+
+			if verbose {
+				log.Printf("[verbose] model=%s maxTurns=%d maxTokens=%d", resolvedModel, maxTurns, maxTokens)
+			}
+
 			prompter := &repl.TerminalPermissionPrompter{
 				Scanner: bufio.NewScanner(os.Stdin),
 				Writer:  os.Stdout,
@@ -580,7 +613,7 @@ func main() {
 				MaxTokens:     maxTokens,
 				MaxIterations: maxTurns,
 				SystemPrompt:  systemPrompt,
-				PermMode:      agent.WorkspaceWrite,
+				PermMode:      permMode,
 				Prompter:      prompter,
 				ToolCb:        toolCb,
 			})
@@ -602,6 +635,12 @@ func main() {
 	chatCmd.Flags().String("api-key", "", "API key (overrides env vars)")
 	chatCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
 	chatCmd.Flags().String("skill", "", "Activate a skill by name (prepends skill system prompt)")
+	chatCmd.Flags().Bool("dangerously-skip-permissions", false, "Skip all permission prompts (full access)")
+	chatCmd.Flags().Bool("print", false, "Print system prompt and exit")
+	chatCmd.Flags().Bool("verbose", false, "Log API request/response sizes")
+	chatCmd.Flags().Bool("no-project-config", false, "Skip loading GOCODE.md/CLAUDE.md")
+	chatCmd.Flags().StringSlice("allowedTools", nil, "Whitelist specific tools")
+	chatCmd.Flags().StringSlice("disallowedTools", nil, "Blacklist specific tools")
 	rootCmd.AddCommand(chatCmd)
 
 	// 23. prompt — one-shot agent mode
@@ -617,6 +656,8 @@ func main() {
 			noStream, _ := cmd.Flags().GetBool("no-stream")
 			hashlineEnabled, _ := cmd.Flags().GetBool("hashline")
 			skillName, _ := cmd.Flags().GetString("skill")
+			printPrompt, _ := cmd.Flags().GetBool("print")
+			verbose, _ := cmd.Flags().GetBool("verbose")
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
@@ -661,6 +702,15 @@ func main() {
 				systemPrompt = sk.SystemPrompt + "\n\n" + systemPrompt
 			}
 
+			if printPrompt {
+				fmt.Println(systemPrompt)
+				return nil
+			}
+
+			if verbose {
+				log.Printf("[verbose] model=%s maxTurns=%d maxTokens=%d", resolvedModel, maxTurns, maxTokens)
+			}
+
 			// Use FallbackProvider (which implements Provider) for the runtime
 			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
 				Provider:      fp,
@@ -685,6 +735,8 @@ func main() {
 	promptCmd.Flags().Bool("no-stream", false, "Disable streaming output")
 	promptCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
 	promptCmd.Flags().String("skill", "", "Activate a skill by name (prepends skill system prompt)")
+	promptCmd.Flags().Bool("print", false, "Print system prompt and exit")
+	promptCmd.Flags().Bool("verbose", false, "Log API request/response sizes")
 	rootCmd.AddCommand(promptCmd)
 
 	// 21. mcp-serve
