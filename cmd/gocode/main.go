@@ -39,7 +39,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.3.4"
+var version = "v0.3.5"
 
 // stdRecoveryLogger logs recovery events to stderr via the standard log package.
 type stdRecoveryLogger struct{}

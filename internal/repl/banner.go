@@ -85,9 +85,9 @@ func PrintBanner(w io.Writer, cfg BannerConfig) {
 		"",
 		yellow + bold + "Models" + reset,
 		gray + " --model " + white + "sonnet" + gray + "  Claude" + reset,
-		gray + " --model " + white + "gpt4o" + gray + "   GPT-4o" + reset,
-		gray + " --model " + white + "gemini" + gray + "  Gemini" + reset,
-		gray + " --model " + white + "grok" + gray + "    Grok 3" + reset,
+		gray + " --model " + white + "gpt5" + gray + "    GPT-5.4" + reset,
+		gray + " --model " + white + "gemini" + gray + "  Gemini 3.1" + reset,
+		gray + " --model " + white + "grok" + gray + "    Grok 4.20" + reset,
 	}
 
 	maxLines := len(leftLines)

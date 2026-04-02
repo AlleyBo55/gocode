@@ -233,20 +233,24 @@ func (r *ConversationRuntime) executeTool(tu toolUseInfo) apitypes.ToolResult {
 	}
 	inputStr, _ := json.Marshal(inputMap)
 
+	// Notify UI that a tool is about to run (stops spinner, shows tool name)
+	r.toolCb.OnToolStart(tu.name, inputMap)
+
 	// Check permissions
 	allowed, reason := r.permPolicy.Authorize(tu.name, string(inputStr))
 	if !allowed {
+		r.toolCb.OnToolEnd(tu.name, false)
 		return apitypes.ToolResult{ToolUseID: tu.id, Output: reason, IsError: true}
 	}
 
 	// Pre-tool hook
 	preResult := r.hooks.PreToolUse(tu.name, inputMap)
 	if preResult.IsDenied() {
+		r.toolCb.OnToolEnd(tu.name, false)
 		return ToolResultFromHookDenial(tu.id, tu.name, preResult)
 	}
 
 	// Execute
-	r.toolCb.OnToolStart(tu.name, inputMap)
 	result := r.executor.Execute(tu.name, inputMap)
 	r.toolCb.OnToolEnd(tu.name, !result.IsError)
 	result.ToolUseID = tu.id
