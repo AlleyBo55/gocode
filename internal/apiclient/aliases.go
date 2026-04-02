@@ -14,28 +14,35 @@ const (
 
 // modelAliases maps short names to full model identifiers.
 var modelAliases = map[string]string{
-	// Anthropic Claude
+	// Anthropic Claude (2026)
 	"opus":   "claude-opus-4-6",
 	"sonnet": "claude-sonnet-4-6",
 	"haiku":  "claude-haiku-4-5-20251213",
-	// OpenAI GPT
-	"gpt4":      "gpt-4o",
-	"gpt4o":     "gpt-4o",
-	"gpt4-mini": "gpt-4o-mini",
-	"gpt":       "gpt-4o",
-	"o1":        "o1",
-	"o1-mini":   "o1-mini",
-	"o3":        "o3",
-	"o3-mini":   "o3-mini",
-	"o4-mini":   "o4-mini",
-	"codex":     "codex-mini-latest",
-	// Google Gemini
-	"gemini":      "gemini-2.5-pro",
-	"gemini-pro":  "gemini-2.5-pro",
-	"gemini-flash": "gemini-2.5-flash",
-	// xAI Grok
-	"grok":      "grok-3",
+	// OpenAI GPT (2026)
+	"gpt5":       "gpt-5.4",
+	"gpt54":      "gpt-5.4",
+	"gpt5-mini":  "gpt-5.4-mini",
+	"gpt54-mini": "gpt-5.4-mini",
+	"gpt54-nano": "gpt-5.4-nano",
+	"gpt4":       "gpt-4o",
+	"gpt4o":      "gpt-4o",
+	"gpt4-mini":  "gpt-4o-mini",
+	"gpt":        "gpt-5.4",
+	"o1":         "o1",
+	"o1-mini":    "o1-mini",
+	"o3":         "o3",
+	"o3-mini":    "o3-mini",
+	"o4-mini":    "o4-mini",
+	"codex":      "codex-mini-latest",
+	// Google Gemini (2026)
+	"gemini":       "gemini-3.1-pro-preview",
+	"gemini-pro":   "gemini-3.1-pro-preview",
+	"gemini-flash": "gemini-3-flash",
+	"gemini-2.5":   "gemini-2.5-pro",
+	// xAI Grok (2026)
+	"grok":      "grok-4.20-beta",
 	"grok-mini": "grok-3-mini",
+	"grok-3":    "grok-3",
 	"grok-2":    "grok-2",
 }
 
@@ -59,7 +66,7 @@ func DetectProviderKind(model string) ProviderKind {
 	}
 	if strings.HasPrefix(resolved, "gpt") || strings.HasPrefix(resolved, "o1") ||
 		strings.HasPrefix(resolved, "o3") || strings.HasPrefix(resolved, "o4") ||
-		strings.HasPrefix(resolved, "codex") {
+		strings.HasPrefix(resolved, "codex") || strings.HasPrefix(resolved, "gpt-5") {
 		return ProviderOpenAi
 	}
 	if strings.HasPrefix(resolved, "gemini") {

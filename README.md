@@ -158,10 +158,10 @@ Use any of these out of the box. Just set the right API key and go.
 
 | Provider | Models | Alias | Env Var |
 |----------|--------|-------|---------|
-| **Anthropic** | Claude Opus 4, Sonnet 4, Haiku 4.5 | `opus`, `sonnet`, `haiku` | `ANTHROPIC_API_KEY` |
-| **OpenAI** | GPT-4o, GPT-4o-mini, o1, o3, o4-mini, Codex | `gpt4o`, `gpt4-mini`, `o1`, `o3`, `o4-mini`, `codex` | `OPENAI_API_KEY` |
-| **Google** | Gemini 2.5 Pro, Gemini 2.5 Flash | `gemini`, `gemini-pro`, `gemini-flash` | `GEMINI_API_KEY` |
-| **xAI** | Grok 3, Grok 3 Mini, Grok 2 | `grok`, `grok-mini`, `grok-2` | `XAI_API_KEY` |
+| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | `opus`, `sonnet`, `haiku` | `ANTHROPIC_API_KEY` |
+| **OpenAI** | GPT-5.4, GPT-5.4 Mini, GPT-5.4 Nano, GPT-4o, o3, o4-mini, Codex | `gpt5`, `gpt54-mini`, `gpt54-nano`, `gpt4o`, `o3`, `o4-mini`, `codex` | `OPENAI_API_KEY` |
+| **Google** | Gemini 3.1 Pro, Gemini 3 Flash, Gemini 2.5 Pro | `gemini`, `gemini-flash`, `gemini-2.5` | `GEMINI_API_KEY` |
+| **xAI** | Grok 4.20 Beta, Grok 3, Grok 3 Mini | `grok`, `grok-3`, `grok-mini` | `XAI_API_KEY` |
 
 Or pass any full model ID: `--model gpt-4o-2024-08-06`, `--model claude-sonnet-4-6`, etc.
 

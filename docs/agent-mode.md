@@ -142,21 +142,22 @@ Use the `--model` flag with either a short alias or a full model ID:
 
 ```bash
 # Short aliases
-gocode chat --model opus          # Claude Opus 4
-gocode chat --model sonnet        # Claude Sonnet 4
-gocode chat --model gpt4o         # GPT-4o
-gocode chat --model gpt4-mini     # GPT-4o-mini
+gocode chat --model opus          # Claude Opus 4.6
+gocode chat --model sonnet        # Claude Sonnet 4.6
+gocode chat --model gpt5          # GPT-5.4
+gocode chat --model gpt54-mini    # GPT-5.4 Mini
+gocode chat --model gpt4o         # GPT-4o (legacy)
 gocode chat --model o3             # OpenAI o3
-gocode chat --model gemini        # Gemini 2.5 Pro
-gocode chat --model gemini-flash  # Gemini 2.5 Flash
-gocode chat --model grok          # Grok 3
+gocode chat --model gemini        # Gemini 3.1 Pro
+gocode chat --model gemini-flash  # Gemini 3 Flash
+gocode chat --model grok          # Grok 4.20 Beta
 gocode chat --model codex         # Codex Mini
 
 # Full model IDs
 gocode chat --model claude-opus-4-6
-gocode chat --model gpt-4o-2024-08-06
-gocode chat --model gemini-2.5-pro
-gocode chat --model grok-3
+gocode chat --model gpt-5.4
+gocode chat --model gemini-3.1-pro-preview
+gocode chat --model grok-4.20-beta
 ```
 
 ### Model Alias Table
@@ -166,7 +167,10 @@ gocode chat --model grok-3
 | `opus` | `claude-opus-4-6` | Anthropic |
 | `sonnet` | `claude-sonnet-4-6` | Anthropic |
 | `haiku` | `claude-haiku-4-5-20251213` | Anthropic |
-| `gpt4o` / `gpt4` / `gpt` | `gpt-4o` | OpenAI |
+| `gpt5` / `gpt54` / `gpt` | `gpt-5.4` | OpenAI |
+| `gpt5-mini` / `gpt54-mini` | `gpt-5.4-mini` | OpenAI |
+| `gpt54-nano` | `gpt-5.4-nano` | OpenAI |
+| `gpt4o` / `gpt4` | `gpt-4o` | OpenAI |
 | `gpt4-mini` | `gpt-4o-mini` | OpenAI |
 | `o1` | `o1` | OpenAI |
 | `o1-mini` | `o1-mini` | OpenAI |
@@ -174,15 +178,17 @@ gocode chat --model grok-3
 | `o3-mini` | `o3-mini` | OpenAI |
 | `o4-mini` | `o4-mini` | OpenAI |
 | `codex` | `codex-mini-latest` | OpenAI |
-| `gemini` / `gemini-pro` | `gemini-2.5-pro` | Google |
-| `gemini-flash` | `gemini-2.5-flash` | Google |
-| `grok` | `grok-3` | xAI |
+| `gemini` / `gemini-pro` | `gemini-3.1-pro-preview` | Google |
+| `gemini-flash` | `gemini-3-flash` | Google |
+| `gemini-2.5` | `gemini-2.5-pro` | Google |
+| `grok` | `grok-4.20-beta` | xAI |
+| `grok-3` | `grok-3` | xAI |
 | `grok-mini` | `grok-3-mini` | xAI |
 | `grok-2` | `grok-2` | xAI |
 
 ### Auto-Detection
 
-If you don't specify `--model`, gocode defaults to `sonnet` (Claude Sonnet 4). The provider is auto-detected from the model name:
+If you don't specify `--model`, gocode defaults to `sonnet` (Claude Sonnet 4.6). The provider is auto-detected from the model name:
 
 - `claude*` → Anthropic
 - `gpt*`, `o1*`, `o3*`, `o4*`, `codex*` → OpenAI
