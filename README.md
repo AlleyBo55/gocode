@@ -16,11 +16,11 @@
 
 <h1 align="center">gocode — Claude Code, Rewritten in Go. Now Multi-Model.</h1>
 
-<h3 align="center">The Go version of Claude Code. One binary. Zero dependencies. 20× faster.<br/>Now with standalone agent mode — use Claude, GPT-4o, Gemini, or Grok from your terminal.</h3>
+<h3 align="center">The Go version of Claude Code. One binary. Zero dependencies. 20× faster.<br/>Now with multi-agent orchestration, model fallback, and IDE-level tools — from your terminal.</h3>
 
 <p align="center">
   <strong>An open-source Go reimplementation of the Claude Code AI coding agent.</strong><br/>
-  We took the Claude Code architecture — the AI agent runtime that powers tool orchestration, session management, and prompt routing — and rebuilt every subsystem in Go. Then we went further: multi-model support, a standalone terminal agent, and native IDE integration. One binary, any LLM, instant startup.
+  We took the Claude Code architecture — the AI agent runtime that powers tool orchestration, session management, and prompt routing — and rebuilt every subsystem in Go. Then we went further: multi-model support, multi-agent orchestration, model fallback chains, IDE-level tooling, and a skills system. One binary, any LLM, instant startup.
 </p>
 
 <p align="center">
@@ -55,6 +55,38 @@ gocode does something no other tool does: it's both a **standalone AI coding age
 | **MCP Server Mode** | Plug into Cursor, Kiro, VS Code, Antigravity, or Claude Desktop as a tool server. | `gocode mcp-serve` |
 
 You don't have to choose. You get both.
+
+---
+
+## What's New in v0.3.0 — The Agent OS
+
+We didn't just add features. We changed what a terminal agent can be.
+
+Most coding agents are single-threaded, single-model, and fragile. They crash when the context window fills up. They stop when the API rate-limits. They can't delegate. They can't plan. They can't talk to your language server.
+
+gocode v0.3.0 fixes all of that.
+
+### 🧠 It Never Stops
+
+Your primary model hits a rate limit? gocode silently falls through to the next model in the chain. Context window full? It compacts the conversation and keeps going. API down? Exponential backoff, three retries, automatic recovery. You keep working. The agent keeps working.
+
+### 🤝 It Delegates
+
+One agent is a tool. A team of agents is a workforce. The orchestrator breaks complex tasks into pieces and hands them to specialists — a deep researcher, a planner, a debugger — each with its own model, its own context, its own tool permissions. Up to five agents running in parallel, results flowing back through Go channels.
+
+### 📋 It Plans Before It Codes
+
+Type `/plan` and the agent interviews you. What's the scope? What are the constraints? What could go wrong? It produces a structured plan — summary, ambiguities, steps, estimated scope — and waits for your approval before touching a single file.
+
+### 🔧 It Has IDE-Level Tools
+
+LSP integration for real renames and go-to-definition. AST-grep for structural code search. Tmux for persistent terminal sessions. MCP client for connecting to any external tool server. These aren't wrappers around grep. These are the real thing.
+
+### 📚 It Understands Your Project
+
+Type `/init-deep` and gocode scans your entire project, generating `AGENTS.md` context files in every directory. From that point on, every file the agent reads comes with automatic project context. No manual configuration. No prompt engineering. It just knows.
+
+> **[Read the full Advanced Features guide →](docs/advanced-features.md)**
 
 ---
 
@@ -107,6 +139,16 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 - 💰 **Token tracking** — `/cost` shows exactly how many tokens you've used
 - 📝 **Session persistence** — resume conversations with `--resume`
 - 🔀 **Model switching** — `--model gpt4o` today, `--model sonnet` tomorrow, same agent
+- 🛡 **Hash-anchored edits** — content hashes prevent stale overwrites (`--hashline`)
+- 🔁 **Model fallback** — automatic failover across providers on rate limits and errors
+- 🧠 **Multi-agent orchestration** — delegate to specialist sub-agents running in parallel
+- 📋 **Planning mode** — `/plan` runs an interview before any code is touched
+- 🎯 **Skills system** — domain-tuned agent profiles from `.gocode/skills/`
+- 🔬 **LSP integration** — real renames, go-to-definition, find-references via language servers
+- 🌳 **AST-grep** — structural code search and rewrite, not regex
+- 💻 **Tmux sessions** — persistent terminal sessions for REPLs and debuggers
+- 🔌 **MCP client** — connect to external MCP servers for web search, docs, code search
+- 📚 **Auto-context** — `/init-deep` generates project-wide AGENTS.md context files
 
 ### As an MCP Server (`gocode mcp-serve`)
 
@@ -124,8 +166,11 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 | Runtime dependencies | **None** |
 | Supported LLM providers | **4** (Anthropic, OpenAI, Google, xAI) |
 | Supported IDEs | **5** (Cursor, Kiro, VS Code, Antigravity, Claude Desktop) |
-| MCP tools | **14** |
-| Internal packages | **26** |
+| MCP tools | **14 built-in + external via MCP client** |
+| Internal packages | **38** |
+| Built-in agent profiles | **4** (coordinator, deep-worker, planner, debugger) |
+| Built-in skills | **2** (git-master, frontend-ui-ux) |
+| Max concurrent background agents | **5** |
 
 ---
 
@@ -134,6 +179,7 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 | Guide | Description |
 |-------|-------------|
 | 📖 **[Agent Mode Guide](docs/agent-mode.md)** | How to use `gocode chat` and `gocode prompt` — models, API keys, flags, slash commands, examples |
+| 🚀 **[Advanced Features](docs/advanced-features.md)** | Multi-agent orchestration, model fallback, planning mode, skills, LSP, AST-grep, tmux, MCP client, context generation |
 | 🔌 **[MCP & IDE Integration Guide](docs/mcp-ide-guide.md)** | How to connect gocode to Cursor, Kiro, VS Code, Antigravity, Claude Desktop |
 | 🏗 **[Architecture](docs/architecture.md)** | Internal package structure, system diagrams, design decisions |
 | 📚 **[CLI Reference](docs/cli-reference.md)** | Full list of all 23 CLI commands with flags and examples |
@@ -166,6 +212,12 @@ Open a PR. Start a discussion. File an issue. Every contribution makes gocode be
 | MCP compliance | N/A | **Full specification** |
 | IDE integrations | N/A | **5 IDEs supported** |
 | Standalone agent | Yes (Claude only) | **Yes (any model)** |
+| Multi-agent orchestration | No | **Yes (4 built-in profiles)** |
+| Model fallback | No | **Yes (automatic failover)** |
+| Planning mode | No | **Yes (`/plan` command)** |
+| Skills system | No | **Yes (JSON profiles)** |
+| LSP integration | No | **Yes (rename, definition, references)** |
+| MCP client | No | **Yes (connect to external servers)** |
 
 ---
 
@@ -173,7 +225,7 @@ Open a PR. Start a discussion. File an issue. Every contribution makes gocode be
 
 gocode is the **Go version of Claude Code** — if you searched for any of these terms, you found the right project:
 
-`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `claude code rewrite` · `claude code port` · `go claude code` · `golang claude code` · `claude code cli golang` · `ai coding agent go` · `ai coding agent golang` · `go ai agent` · `golang ai agent` · `mcp server go` · `mcp server golang` · `mcp golang` · `model context protocol go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude desktop mcp go` · `go ai coding assistant` · `golang ai coding tool` · `claude code go port` · `claude code go version` · `claude code reimplementation` · `open source claude code` · `claude code alternative golang` · `fast ai agent go` · `lightweight ai agent` · `single binary ai agent` · `multi model ai agent` · `gpt4o coding agent` · `gemini coding agent` · `grok coding agent`
+`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `claude code rewrite` · `claude code port` · `go claude code` · `golang claude code` · `claude code cli golang` · `ai coding agent go` · `ai coding agent golang` · `go ai agent` · `golang ai agent` · `mcp server go` · `mcp server golang` · `mcp golang` · `model context protocol go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude desktop mcp go` · `go ai coding assistant` · `golang ai coding tool` · `claude code go port` · `claude code go version` · `claude code reimplementation` · `open source claude code` · `claude code alternative golang` · `fast ai agent go` · `lightweight ai agent` · `single binary ai agent` · `multi model ai agent` · `gpt4o coding agent` · `gemini coding agent` · `grok coding agent` · `multi agent orchestration go` · `agent fallback chain` · `lsp integration go agent` · `ast grep go` · `mcp client golang` · `ai planning agent` · `agent skills system` · `background agents golang`
 
 ---
 
@@ -188,8 +240,8 @@ MIT — use it, fork it, ship it.
 </p>
 
 <p align="center">
-  <strong>gocode — the Go version of Claude Code. Now multi-model.</strong><br/>
-  One binary. Zero dependencies. Instant startup. Any LLM.<br/>
+  <strong>gocode — the Go version of Claude Code. Now a multi-agent operating system.</strong><br/>
+  One binary. Zero dependencies. Instant startup. Any LLM. A team of agents.<br/>
   This is what an AI coding agent should feel like.
 </p>
 
