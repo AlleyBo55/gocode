@@ -536,7 +536,7 @@ func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
 		err     error
 	}
 
-	ch := make(chan sourceResult, 3)
+	ch := make(chan sourceResult, 5)
 
 	// Wikipedia search + summary
 	go func() {
@@ -556,10 +556,22 @@ func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
 		ch <- sourceResult{"Reddit", content, err}
 	}()
 
+	// Hacker News search
+	go func() {
+		content, err := searchHackerNews(ctx, encodedQuery)
+		ch <- sourceResult{"Hacker News", content, err}
+	}()
+
+	// StackExchange search
+	go func() {
+		content, err := searchStackExchange(ctx, encodedQuery)
+		ch <- sourceResult{"StackOverflow", content, err}
+	}()
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Search results for: %s\n\n", query))
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 5; i++ {
 		r := <-ch
 		if r.err == nil && r.content != "" {
 			sb.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", r.name, r.content))
@@ -568,7 +580,7 @@ func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
 
 	result := sb.String()
 	if len(result) < 50 {
-		return ToolResult{Success: true, Output: fmt.Sprintf("No results found for %q across Wikipedia, GitHub, and Reddit.", query)}
+		return ToolResult{Success: true, Output: fmt.Sprintf("No results found for %q across Wikipedia, GitHub, Reddit, Hacker News, and StackOverflow.", query)}
 	}
 	return ToolResult{Success: true, Output: result}
 }
@@ -726,6 +738,89 @@ func searchReddit(ctx context.Context, query string) (string, error) {
 			sb.WriteString(fmt.Sprintf("  %s\n", selftext))
 		}
 		sb.WriteString(fmt.Sprintf("  %s\n", d.URL))
+	}
+	return sb.String(), nil
+}
+
+func searchHackerNews(ctx context.Context, query string) (string, error) {
+	url := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story&hitsPerPage=5", query)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "gocode/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body := make([]byte, 32768)
+	n, _ := resp.Body.Read(body)
+
+	var hn struct {
+		Hits []struct {
+			Title    string `json:"title"`
+			URL      string `json:"url"`
+			Points   int    `json:"points"`
+			NumComments int `json:"num_comments"`
+			ObjectID string `json:"objectID"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(body[:n], &hn); err != nil || len(hn.Hits) == 0 {
+		return "", fmt.Errorf("no results")
+	}
+
+	var sb strings.Builder
+	for _, h := range hn.Hits {
+		link := h.URL
+		if link == "" {
+			link = fmt.Sprintf("https://news.ycombinator.com/item?id=%s", h.ObjectID)
+		}
+		sb.WriteString(fmt.Sprintf("▲%d 💬%d  %s\n  %s\n", h.Points, h.NumComments, h.Title, link))
+	}
+	return sb.String(), nil
+}
+
+func searchStackExchange(ctx context.Context, query string) (string, error) {
+	url := fmt.Sprintf("https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=%s&site=stackoverflow&pagesize=5&filter=default", query)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "gocode/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body := make([]byte, 32768)
+	n, _ := resp.Body.Read(body)
+
+	var se struct {
+		Items []struct {
+			Title string `json:"title"`
+			Link  string `json:"link"`
+			Score int    `json:"score"`
+			AnswerCount int `json:"answer_count"`
+			IsAnswered bool `json:"is_answered"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(body[:n], &se); err != nil || len(se.Items) == 0 {
+		return "", fmt.Errorf("no results")
+	}
+
+	var sb strings.Builder
+	for _, item := range se.Items {
+		answered := "○"
+		if item.IsAnswered {
+			answered = "✓"
+		}
+		title := stripHTML(item.Title)
+		sb.WriteString(fmt.Sprintf("%s ↑%d  %s\n  %s\n", answered, item.Score, title, item.Link))
 	}
 	return sb.String(), nil
 }

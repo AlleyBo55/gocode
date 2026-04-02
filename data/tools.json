@@ -116,7 +116,7 @@
   {
     "name": "WebSearchTool",
     "responsibility": "search the web",
-    "description": "Search for information using Wikipedia. Returns article summaries and related results. No API key required. Works out of the box.",
+    "description": "Search for information across Wikipedia, GitHub, Reddit, Hacker News, and StackOverflow in parallel. Returns articles, repos, discussions, and Q&A. No API key required.",
     "source_hint": "tools/web",
     "input_schema": {
       "type": "object",
