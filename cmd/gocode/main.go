@@ -128,6 +128,20 @@ func (a *mcpToolAdapter) Execute(params map[string]interface{}) toolimpl.ToolRes
 	return toolimpl.ToolResult{Success: true, Output: output}
 }
 
+// orchestratorToolAdapter adapts orchestrator delegation tools to the toolimpl.ToolExecutor interface.
+type orchestratorToolAdapter struct {
+	orch     *orchestrator.Orchestrator
+	toolName string
+}
+
+func (a *orchestratorToolAdapter) Execute(params map[string]interface{}) toolimpl.ToolResult {
+	result := a.orch.Execute(a.toolName, params)
+	if result.IsError {
+		return toolimpl.ToolResult{Success: false, Error: result.Output}
+	}
+	return toolimpl.ToolResult{Success: true, Output: result.Output}
+}
+
 // buildFallbackProvider wraps a single resolved provider into a FallbackProvider
 // with a chain of one entry. Users can configure additional entries via config later.
 func buildFallbackProvider(provider apiclient.Provider, model string) *apiclient.FallbackProvider {
@@ -587,8 +601,11 @@ func main() {
 
 			executor := agent.NewRegistryExecutor(toolImpl, toolReg)
 
-			// Phase 2: create Orchestrator with ModelRouter and executor
-			_ = orchestrator.NewOrchestrator(router, executor)
+			// Phase 2: create Orchestrator with ModelRouter and executor,
+			// then register its delegation tools in the tool registry.
+			orch := orchestrator.NewOrchestrator(router, executor)
+			toolImpl.Set("orchestrator_delegate", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate"})
+			toolImpl.Set("orchestrator_delegate_bg", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate_bg"})
 
 			// Phase 2: load skills on startup
 			skillLoader := skills.NewSkillLoader("")
@@ -919,8 +936,11 @@ func main() {
 
 			executor := agent.NewRegistryExecutor(toolImpl, toolReg)
 
-			// Phase 2: create Orchestrator with ModelRouter and executor
-			_ = orchestrator.NewOrchestrator(router, executor)
+			// Phase 2: create Orchestrator with ModelRouter and executor,
+			// then register its delegation tools in the tool registry.
+			orch := orchestrator.NewOrchestrator(router, executor)
+			toolImpl.Set("orchestrator_delegate", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate"})
+			toolImpl.Set("orchestrator_delegate_bg", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate_bg"})
 
 			// Phase 2: load skills on startup
 			skillLoader := skills.NewSkillLoader("")
