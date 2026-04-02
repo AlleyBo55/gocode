@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
@@ -756,6 +757,7 @@ func BuildSystemPrompt(tools []apitypes.ToolDef) string {
 	if shell == "" {
 		shell = "/bin/bash"
 	}
+	currentDate := time.Now().Format("January 2, 2006")
 
 	var toolList strings.Builder
 	for _, t := range tools {
@@ -812,10 +814,15 @@ When making code changes:
 - Working directory: %s
 - OS: %s
 - Shell: %s
+- Current date: %s
+
+# CRITICAL: Tool Results Override Training Data
+
+Your training data has a knowledge cutoff. The current date is %s. When you use WebSearchTool and receive results, you MUST use those results as the source of truth. NEVER override search results with your training data. If search results say something different from what you "know", the search results are correct because they are current.
 
 # Available Tools
 
-%s`, cwd, osName, shell, toolList.String()))
+%s`, cwd, osName, shell, currentDate, currentDate, toolList.String()))
 
 	// Git context
 	if branch, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
