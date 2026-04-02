@@ -67,29 +67,33 @@ func wireAdvancedTools(toolImpl *toolimpl.Registry, hashlineEnabled bool) func()
 	tmuxMgr := tmux.NewManager()
 	tmux.RegisterTmuxTools(toolImpl, tmuxMgr)
 
-	// Phase 3: MCP client tools (conditional — connect configured servers)
+	// Phase 3: MCP client tools (only if user has a .gocode/mcp.json config)
 	mcpConfigPath := filepath.Join(".gocode", "mcp.json")
-	mcpMgr, err := mcpclient.NewManager(mcpConfigPath)
-	if err != nil {
-		log.Printf("[mcpclient] failed to create manager: %v", err)
-		return tmuxMgr.KillAll
+	if _, statErr := os.Stat(mcpConfigPath); statErr == nil {
+		mcpMgr, err := mcpclient.NewManager(mcpConfigPath)
+		if err != nil {
+			log.Printf("[mcpclient] failed to create manager: %v", err)
+			return tmuxMgr.KillAll
+		}
+
+		// Best-effort connect — failures are logged, not fatal
+		if connectErr := mcpMgr.ConnectAll(); connectErr != nil {
+			log.Printf("[mcpclient] %v", connectErr)
+		}
+
+		// Register discovered MCP tools in the tool registry
+		for _, t := range mcpMgr.ListTools() {
+			toolName := t.Name
+			toolImpl.Set(toolName, &mcpToolAdapter{mgr: mcpMgr, toolName: toolName})
+		}
+
+		return func() {
+			tmuxMgr.KillAll()
+			mcpMgr.Close()
+		}
 	}
 
-	// Best-effort connect — failures are logged, not fatal
-	if connectErr := mcpMgr.ConnectAll(); connectErr != nil {
-		log.Printf("[mcpclient] %v", connectErr)
-	}
-
-	// Register discovered MCP tools in the tool registry
-	for _, t := range mcpMgr.ListTools() {
-		toolName := t.Name
-		toolImpl.Set(toolName, &mcpToolAdapter{mgr: mcpMgr, toolName: toolName})
-	}
-
-	return func() {
-		tmuxMgr.KillAll()
-		mcpMgr.Close()
-	}
+	return tmuxMgr.KillAll
 }
 
 // mcpToolAdapter adapts an MCP client tool call to the toolimpl.ToolExecutor interface.
@@ -544,7 +548,7 @@ func main() {
 			for _, e := range skillErrs {
 				log.Printf("[skills] %v", e)
 			}
-			log.Printf("[skills] loaded %d skills", len(loadedSkills))
+			_ = loadedSkills
 
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
 
@@ -623,7 +627,7 @@ func main() {
 			for _, e := range skillErrs {
 				log.Printf("[skills] %v", e)
 			}
-			log.Printf("[skills] loaded %d skills", len(loadedSkills))
+			_ = loadedSkills
 
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
 
