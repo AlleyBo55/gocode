@@ -365,6 +365,28 @@ func (r *REPL) Run(ctx context.Context) error {
 		} // no text was streamed
 		cancel()
 		fmt.Fprintln(r.writer)
+
+		// Context window management: check if session is approaching the limit
+		estimatedTokens := r.runtime.EstimateSessionTokens()
+		contextLimit := apiclient.ContextWindowForModel(r.config.Model)
+		threshold := int(float64(contextLimit) * 0.85) // 85% threshold
+
+		if estimatedTokens > threshold {
+			fmt.Fprintf(r.writer, "\n%s⚠ Context window %.0f%% full (%dk / %dk tokens)%s\n",
+				cYellow, float64(estimatedTokens)/float64(contextLimit)*100,
+				estimatedTokens/1000, contextLimit/1000, ansiReset)
+			fmt.Fprintf(r.writer, "%sSummarizing conversation and starting fresh session...%s\n", cCyan, ansiReset)
+
+			summary, sumErr := r.runtime.SummarizeAndReset(ctx)
+			if sumErr != nil {
+				fmt.Fprintf(r.writer, "%sError summarizing: %v. Use /clear to reset manually.%s\n", cRed, sumErr, ansiReset)
+			} else {
+				fmt.Fprintf(r.writer, "%s✓ New session started with summarized context.%s\n", cGreen, ansiReset)
+				if summary != "" {
+					fmt.Fprintf(r.writer, "%sSummary: %s%s\n\n", cGray, summary, ansiReset)
+				}
+			}
+		}
 	}
 }
 
@@ -754,6 +776,9 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 - When you need to edit a file, ALWAYS read it first so you have the exact content for old_text matching.
 - When running commands with BashTool, prefer non-interactive commands. Avoid interactive commands that require user input.
 - When using BashTool, do not use commands that produce very large outputs. If needed, pipe to head or tail.
+- When the user asks you to "search" or "look up" something, use WebSearchTool with a clear query. If the user doesn't specify a query, infer it from the conversation context. NEVER call WebSearchTool with an empty query.
+- WebSearchTool searches Wikipedia, GitHub, Reddit, Hacker News, and StackOverflow in parallel. Use it for current events, technical questions, people, projects, or any factual lookup.
+- When the user asks a follow-up like "search for that" or "look it up", construct the query from what was just discussed. Always provide the query parameter.
 
 # Making Code Changes
 

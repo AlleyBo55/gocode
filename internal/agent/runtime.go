@@ -304,6 +304,65 @@ func (r *ConversationRuntime) CompactSession(preserveRecent int) {
 	r.session = r.session[len(r.session)-preserveRecent:]
 }
 
+// EstimateSessionTokens returns a rough token count for the current session.
+// Uses the heuristic: 1 token ≈ 4 characters.
+func (r *ConversationRuntime) EstimateSessionTokens() int {
+	totalChars := len(r.systemPrompt)
+	for _, msg := range r.session {
+		for _, block := range msg.Content {
+			totalChars += len(block.Text)
+			totalChars += len(block.Input)
+			totalChars += len(block.Name) + len(block.ID)
+		}
+	}
+	return totalChars / 4
+}
+
+// SummarizeAndReset compacts the session by asking the LLM to summarize,
+// then starts fresh with just the summary as context.
+func (r *ConversationRuntime) SummarizeAndReset(ctx context.Context) (string, error) {
+	if len(r.session) < 4 {
+		return "", nil
+	}
+
+	summaryPrompt := "Summarize the entire conversation so far in a concise paragraph. Include: what the user asked, what tools were used, what was accomplished, and any pending tasks. This summary will be used as context for a new session."
+
+	r.session = append(r.session, apitypes.InputMessage{
+		Role:    "user",
+		Content: []apitypes.InputContentBlock{{Kind: "text", Text: summaryPrompt}},
+	})
+
+	resp, err := r.provider.SendMessage(ctx, r.buildRequest())
+	if err != nil {
+		// If even the summary request fails, do a hard reset
+		r.session = nil
+		return "Previous session was too large to summarize. Starting fresh.", nil
+	}
+
+	var summary string
+	for _, block := range resp.Content {
+		if block.Kind == "text" {
+			summary += block.Text
+		}
+	}
+
+	// Reset session with just the summary
+	r.session = []apitypes.InputMessage{
+		{
+			Role: "user",
+			Content: []apitypes.InputContentBlock{{Kind: "text",
+				Text: "Here is a summary of our previous conversation:\n\n" + summary + "\n\nPlease continue from where we left off."}},
+		},
+		{
+			Role: "assistant",
+			Content: []apitypes.InputContentBlock{{Kind: "text",
+				Text: "Got it, I have the context from our previous conversation. How can I help you next?"}},
+		},
+	}
+
+	return summary, nil
+}
+
 // GetUsage returns the cumulative usage tracker.
 func (r *ConversationRuntime) GetUsage() UsageTracker { return r.usage }
 

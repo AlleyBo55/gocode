@@ -255,3 +255,36 @@ func MaxTokensForModel(model string) int {
 		return 16384
 	}
 }
+
+// ContextWindowForModel returns the context window size (input tokens) for a model.
+func ContextWindowForModel(model string) int {
+	canonical := strings.ToLower(ResolveModelAlias(model))
+	switch {
+	case strings.Contains(canonical, "gpt-5.4"):
+		return 1000000
+	case strings.Contains(canonical, "gpt-4o"):
+		return 128000
+	case strings.Contains(canonical, "opus"):
+		return 200000
+	case strings.Contains(canonical, "sonnet"):
+		return 200000
+	case strings.Contains(canonical, "haiku"):
+		return 200000
+	case strings.Contains(canonical, "gemini-3"), strings.Contains(canonical, "gemini-2"):
+		return 1000000
+	case strings.Contains(canonical, "grok"):
+		return 131072
+	case strings.Contains(canonical, "o3"), strings.Contains(canonical, "o4"):
+		return 200000
+	case strings.Contains(canonical, "deepseek"):
+		return 128000
+	case strings.Contains(canonical, "mistral-large"):
+		return 128000
+	case strings.Contains(canonical, "llama"):
+		return 128000
+	case strings.Contains(canonical, "qwen"):
+		return 128000
+	default:
+		return 128000
+	}
+}
