@@ -23,6 +23,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/bootstrap"
 	"github.com/AlleyBo55/gocode/internal/commandgraph"
 	"github.com/AlleyBo55/gocode/internal/commands"
+	"github.com/AlleyBo55/gocode/internal/editorcompat"
 	"github.com/AlleyBo55/gocode/internal/execution"
 	"github.com/AlleyBo55/gocode/internal/hashline"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
@@ -32,6 +33,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/modes"
 	"github.com/AlleyBo55/gocode/internal/orchestrator"
 	"github.com/AlleyBo55/gocode/internal/permissions"
+	"github.com/AlleyBo55/gocode/internal/plugins"
 	"github.com/AlleyBo55/gocode/internal/queryengine"
 	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/runtime"
@@ -45,7 +47,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.7.0"
+var version = "v0.7.1"
 
 // isTerminal checks if stdout is a terminal (not piped).
 func isTerminal() bool {
@@ -623,6 +625,15 @@ func main() {
 
 			// Use FallbackProvider (which implements Provider) for the runtime
 			toolCb := &repl.TerminalToolCallback{Writer: os.Stdout}
+
+			// Load plugins and create hook runner
+			pm := plugins.NewPluginManager(filepath.Join(".gocode", "plugins"))
+			loadedPlugins, pluginErrs := pm.LoadAll()
+			for _, e := range pluginErrs {
+				log.Printf("[plugins] %v", e)
+			}
+			hookRunner := plugins.NewPluginHookRunner(loadedPlugins)
+
 			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
 				Provider:      fp,
 				Executor:      executor,
@@ -633,6 +644,7 @@ func main() {
 				PermMode:      permMode,
 				Prompter:      prompter,
 				ToolCb:        toolCb,
+				Hooks:         hookRunner,
 			})
 
 			// Phase 1: wrap runtime with SessionRecoveryManager
@@ -933,6 +945,97 @@ func main() {
 			fmt.Print(string(out))
 		},
 	})
+
+	// --- config command ---
+	configCmd := &cobra.Command{
+		Use:   "config",
+		Short: "Show current configuration",
+		Run: func(cmd *cobra.Command, args []string) {
+			cwd, _ := os.Getwd()
+			fmt.Printf("Version:        %s\n", version)
+			fmt.Printf("Working dir:    %s\n", cwd)
+			fmt.Printf("Session dir:    %s\n", sessionStore.Dir)
+			fmt.Printf("Skills dir:     .gocode/skills/\n")
+			fmt.Printf("Plugins dir:    .gocode/plugins/\n")
+			fmt.Printf("Theme:          %s\n", tui.LoadTheme("").Name)
+			for _, name := range []string{"GOCODE.md", "CLAUDE.md"} {
+				if _, err := os.Stat(name); err == nil {
+					fmt.Printf("Project config: %s\n", name)
+					break
+				}
+			}
+			for _, env := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"} {
+				if os.Getenv(env) != "" {
+					fmt.Printf("Provider:       %s (set)\n", env)
+				}
+			}
+			sl := skills.NewSkillLoader("")
+			ls, _ := sl.LoadAll()
+			fmt.Printf("Skills:         %d loaded\n", len(ls))
+			pm := plugins.NewPluginManager(filepath.Join(".gocode", "plugins"))
+			lp, _ := pm.LoadAll()
+			fmt.Printf("Plugins:        %d loaded\n", len(lp))
+			editor := editorcompat.DetectEditor()
+			fmt.Printf("Editor:         %s\n", editor)
+		},
+	}
+	rootCmd.AddCommand(configCmd)
+
+	// --- plugin commands ---
+	pluginCmd := &cobra.Command{Use: "plugin", Short: "Manage plugins"}
+	pluginCmd.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List installed plugins",
+		Run: func(cmd *cobra.Command, args []string) {
+			pm := plugins.NewPluginManager(filepath.Join(".gocode", "plugins"))
+			loaded, errs := pm.LoadAll()
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", e)
+			}
+			if len(loaded) == 0 {
+				fmt.Println("No plugins installed.")
+				return
+			}
+			for _, p := range loaded {
+				fmt.Printf("%s v%s — %s\n", p.Name, p.Version, p.Description)
+			}
+		},
+	})
+	pluginCmd.AddCommand(&cobra.Command{
+		Use:   "install [path]",
+		Short: "Install a plugin from a local directory",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			data, err := os.ReadFile(filepath.Join(args[0], "plugin.json"))
+			if err != nil {
+				return fmt.Errorf("reading plugin.json: %w", err)
+			}
+			var p plugins.Plugin
+			if err := json.Unmarshal(data, &p); err != nil {
+				return fmt.Errorf("parsing plugin.json: %w", err)
+			}
+			pm := plugins.NewPluginManager(filepath.Join(".gocode", "plugins"))
+			if err := pm.Install(p.Name, p); err != nil {
+				return err
+			}
+			fmt.Printf("Installed plugin %s v%s\n", p.Name, p.Version)
+			return nil
+		},
+	})
+	pluginCmd.AddCommand(&cobra.Command{
+		Use:   "uninstall [name]",
+		Short: "Uninstall a plugin",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			pm := plugins.NewPluginManager(filepath.Join(".gocode", "plugins"))
+			if err := pm.Uninstall(args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Uninstalled plugin %s\n", args[0])
+			return nil
+		},
+	})
+	rootCmd.AddCommand(pluginCmd)
 
 	// --- auth — manage remote access auth keys ---
 	authCmd := &cobra.Command{
