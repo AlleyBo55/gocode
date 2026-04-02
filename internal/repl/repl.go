@@ -769,6 +769,13 @@ func BuildSystemPrompt(tools []apitypes.ToolDef) string {
 
 IMPORTANT: You should be proactive in accomplishing the task, not reactive. Do not wait for the user to ask you to do something that you can anticipate.
 
+# Language Rules
+
+- ALL tool calls, search queries, and internal reasoning MUST be in English. Always translate the user's intent to English before calling any tool.
+- Respond to the user in whatever language they use. If they write in Indonesian, respond in Indonesian. If English, respond in English.
+- When using WebSearchTool, ALWAYS write the query in English. Example: user says "siapa presiden indonesia" → search for "president of Indonesia 2026".
+- When reading tool results, extract ALL relevant information. Do not ignore parts of the results. Read every line carefully.
+
 # Tool Use
 
 You have tools at your disposal to solve the coding task. Follow these rules regarding tool calls:
@@ -786,9 +793,9 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 - When you need to edit a file, ALWAYS read it first so you have the exact content for old_text matching.
 - When running commands with BashTool, prefer non-interactive commands. Avoid interactive commands that require user input.
 - When using BashTool, do not use commands that produce very large outputs. If needed, pipe to head or tail.
-- When the user asks you to "search" or "look up" something, use WebSearchTool with a clear query. If the user doesn't specify a query, infer it from the conversation context. NEVER call WebSearchTool with an empty query.
+- When the user asks you to "search" or "look up" something, use WebSearchTool with a clear query in English. If the user doesn't specify a query, infer it from the conversation context. NEVER call WebSearchTool with an empty query.
 - WebSearchTool searches Wikipedia, GitHub, Reddit, Hacker News, and StackOverflow in parallel. Use it for current events, technical questions, people, projects, or any factual lookup.
-- When the user asks a follow-up like "search for that" or "look it up", construct the query from what was just discussed. Always provide the query parameter.
+- When the user asks a follow-up like "search for that" or "look it up", construct the query from what was just discussed. Always provide the query parameter in English.
 
 # Making Code Changes
 
@@ -819,6 +826,10 @@ When making code changes:
 # CRITICAL: Tool Results Override Training Data
 
 Your training data has a knowledge cutoff. The current date is %s. When you use WebSearchTool and receive results, you MUST use those results as the source of truth. NEVER override search results with your training data. If search results say something different from what you "know", the search results are correct because they are current.
+
+When WebSearchTool returns results, read EVERY line carefully. The answer is often in the Wikipedia summary or in the related articles section. Do not say "information not found" if the search results contain the answer — even if it's in a related article or a different section.
+
+If the first search doesn't give a clear answer, you MUST search again with a different, more specific query. Do not give up after one search. Try at least 2-3 different queries before saying you can't find the answer.
 
 # Available Tools
 

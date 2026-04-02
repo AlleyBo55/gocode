@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -586,7 +587,7 @@ func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
 }
 
 func searchWikipedia(ctx context.Context, query string) (string, error) {
-	searchURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=3", query)
+	searchURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=5", query)
 	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
 		return "", err
@@ -614,34 +615,148 @@ func searchWikipedia(ctx context.Context, query string) (string, error) {
 		return "", fmt.Errorf("no results")
 	}
 
-	// Get summary of top result
-	topTitle := strings.ReplaceAll(sr.Query.Search[0].Title, " ", "_")
-	sumURL := fmt.Sprintf("https://en.wikipedia.org/api/rest_v1/page/summary/%s", topTitle)
-	sumReq, _ := http.NewRequestWithContext(ctx, "GET", sumURL, nil)
-	sumReq.Header.Set("User-Agent", "gocode/1.0 (https://github.com/AlleyBo55/gocode)")
-	sumResp, err := http.DefaultClient.Do(sumReq)
-	if err != nil {
-		return "", err
-	}
-	defer sumResp.Body.Close()
+	var result strings.Builder
 
-	sumBody := make([]byte, 32768)
-	sn, _ := sumResp.Body.Read(sumBody)
-
-	var summary struct {
-		Title   string `json:"title"`
-		Extract string `json:"extract"`
+	// Get summaries + infobox data for top 2 results
+	limit := 2
+	if len(sr.Query.Search) < limit {
+		limit = len(sr.Query.Search)
 	}
-	if json.Unmarshal(sumBody[:sn], &summary) == nil && summary.Extract != "" {
-		result := fmt.Sprintf("%s\n%s\nhttps://en.wikipedia.org/wiki/%s", summary.Title, summary.Extract, topTitle)
-		// Add other results
-		for i := 1; i < len(sr.Query.Search); i++ {
-			snippet := stripHTML(sr.Query.Search[i].Snippet)
-			result += fmt.Sprintf("\n- %s: %s", sr.Query.Search[i].Title, snippet)
+	// Also try the base article title (e.g. "List of presidents of X" → also try "President of X")
+	titlesToFetch := make([]string, 0, limit+2)
+	for i := 0; i < limit; i++ {
+		titlesToFetch = append(titlesToFetch, sr.Query.Search[i].Title)
+	}
+	// Derive related titles: strip "List of" prefix, strip year suffixes
+	for _, t := range sr.Query.Search {
+		if strings.HasPrefix(t.Title, "List of ") {
+			base := strings.TrimPrefix(t.Title, "List of ")
+			// "presidents of Indonesia" → "President of Indonesia"
+			if strings.HasPrefix(base, "presidents") {
+				base = "President" + strings.TrimPrefix(base, "presidents")
+			}
+			if strings.HasPrefix(base, "vice presidents") {
+				base = "Vice President" + strings.TrimPrefix(base, "vice presidents")
+			}
+			titlesToFetch = append(titlesToFetch, base)
 		}
-		return result, nil
 	}
-	return "", fmt.Errorf("no summary")
+
+	for _, rawTitle := range titlesToFetch {
+		title := strings.ReplaceAll(rawTitle, " ", "_")
+
+		// Get page summary
+		sumURL := fmt.Sprintf("https://en.wikipedia.org/api/rest_v1/page/summary/%s", title)
+		sumReq, _ := http.NewRequestWithContext(ctx, "GET", sumURL, nil)
+		sumReq.Header.Set("User-Agent", "gocode/1.0 (https://github.com/AlleyBo55/gocode)")
+		if sumResp, err := http.DefaultClient.Do(sumReq); err == nil {
+			sumBody := make([]byte, 32768)
+			sn, _ := sumResp.Body.Read(sumBody)
+			sumResp.Body.Close()
+			var summary struct {
+				Title   string `json:"title"`
+				Extract string `json:"extract"`
+			}
+			if json.Unmarshal(sumBody[:sn], &summary) == nil && summary.Extract != "" {
+				result.WriteString(fmt.Sprintf("%s\n%s\nhttps://en.wikipedia.org/wiki/%s\n", summary.Title, summary.Extract, title))
+			}
+		}
+
+		// Also get infobox data from raw wikitext (has current incumbent, dates, etc.)
+		infobox := fetchWikiInfobox(ctx, title)
+		if infobox != "" {
+			result.WriteString(fmt.Sprintf("Infobox data: %s\n", infobox))
+		}
+	}
+
+	// Include search snippets
+	for _, r := range sr.Query.Search {
+		snippet := stripHTML(r.Snippet)
+		if snippet != "" {
+			result.WriteString(fmt.Sprintf("- %s: %s\n", r.Title, snippet))
+		}
+	}
+
+	if result.Len() == 0 {
+		return "", fmt.Errorf("no results")
+	}
+	return result.String(), nil
+}
+
+// fetchWikiInfobox extracts key-value pairs from a Wikipedia article's infobox.
+// This gets dynamic data like current incumbent, population, dates, etc.
+func fetchWikiInfobox(ctx context.Context, title string) string {
+	url := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&titles=%s&prop=revisions&rvprop=content&rvsection=0&rvslots=main&format=json", title)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "gocode/1.0 (https://github.com/AlleyBo55/gocode)")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body := make([]byte, 65536)
+	n, _ := resp.Body.Read(body)
+
+	var wr struct {
+		Query struct {
+			Pages map[string]struct {
+				Revisions []struct {
+					Slots struct {
+						Main struct {
+							Content string `json:"*"`
+						} `json:"main"`
+					} `json:"slots"`
+				} `json:"revisions"`
+			} `json:"pages"`
+		} `json:"query"`
+	}
+	if json.Unmarshal(body[:n], &wr) != nil {
+		return ""
+	}
+
+	// Extract useful infobox fields
+	var parts []string
+	interestingFields := []string{
+		"incumbent", "officeholder", "leader_name", "leader_title",
+		"incumbentsince", "president", "vice_president", "vicepresident",
+		"capital", "population_estimate", "area_km2", "gdp_nominal",
+		"established", "founded", "winner", "champion", "gold",
+	}
+
+	for _, page := range wr.Query.Pages {
+		if len(page.Revisions) == 0 {
+			continue
+		}
+		content := page.Revisions[0].Slots.Main.Content
+		for _, field := range interestingFields {
+			// Match patterns like: | incumbent = [[Prabowo Subianto]]
+			patterns := []string{
+				fmt.Sprintf(`(?i)\|\s*%s\s*=\s*\[\[(.*?)\]\]`, field),
+				fmt.Sprintf(`(?i)\|\s*%s\s*=\s*([^\n|]+)`, field),
+			}
+			for _, pat := range patterns {
+				re := regexp.MustCompile(pat)
+				if m := re.FindStringSubmatch(content); len(m) > 1 {
+					val := strings.TrimSpace(m[1])
+					// Clean up wiki markup
+					val = strings.ReplaceAll(val, "[[", "")
+					val = strings.ReplaceAll(val, "]]", "")
+					val = strings.ReplaceAll(val, "{{", "")
+					val = strings.ReplaceAll(val, "}}", "")
+					if val != "" && len(val) < 200 {
+						parts = append(parts, fmt.Sprintf("%s: %s", field, val))
+					}
+					break
+				}
+			}
+		}
+	}
+
+	return strings.Join(parts, "; ")
 }
 
 func searchGitHub(ctx context.Context, query string) (string, error) {
