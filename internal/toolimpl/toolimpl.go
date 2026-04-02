@@ -517,7 +517,7 @@ func (t *WebFetchTool) Execute(params map[string]interface{}) ToolResult {
 
 // --- WebSearchTool ---
 
-// WebSearchTool performs a web search (requires MCP server for full functionality).
+// WebSearchTool performs a web search using DuckDuckGo's instant answer API.
 type WebSearchTool struct{}
 
 func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
@@ -525,10 +525,77 @@ func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
 	if query == "" {
 		return ToolResult{Success: false, Error: "missing required param: query"}
 	}
-	return ToolResult{
-		Success: true,
-		Output:  fmt.Sprintf("Web search for %q requires an MCP server. Configure one in .gocode/mcp.json.", query),
+
+	// Use DuckDuckGo instant answer API (no API key required)
+	searchURL := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_html=1&skip_disambig=1",
+		strings.ReplaceAll(query, " ", "+"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
+	if err != nil {
+		return ToolResult{Success: false, Error: fmt.Sprintf("creating request: %v", err)}
 	}
+	req.Header.Set("User-Agent", "gocode/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ToolResult{Success: false, Error: fmt.Sprintf("search request failed: %v", err)}
+	}
+	defer resp.Body.Close()
+
+	body := make([]byte, 32768) // 32KB max
+	n, _ := resp.Body.Read(body)
+	rawJSON := body[:n]
+
+	// Parse DuckDuckGo response
+	var ddg struct {
+		Abstract       string `json:"Abstract"`
+		AbstractSource string `json:"AbstractSource"`
+		AbstractURL    string `json:"AbstractURL"`
+		Answer         string `json:"Answer"`
+		AnswerType     string `json:"AnswerType"`
+		Heading        string `json:"Heading"`
+		RelatedTopics  []struct {
+			Text     string `json:"Text"`
+			FirstURL string `json:"FirstURL"`
+		} `json:"RelatedTopics"`
+	}
+
+	var sb strings.Builder
+	if json.Unmarshal(rawJSON, &ddg) == nil {
+		if ddg.Heading != "" {
+			sb.WriteString(fmt.Sprintf("# %s\n\n", ddg.Heading))
+		}
+		if ddg.Abstract != "" {
+			sb.WriteString(fmt.Sprintf("%s\nSource: %s (%s)\n\n", ddg.Abstract, ddg.AbstractSource, ddg.AbstractURL))
+		}
+		if ddg.Answer != "" {
+			sb.WriteString(fmt.Sprintf("Answer: %s\n\n", ddg.Answer))
+		}
+		if len(ddg.RelatedTopics) > 0 {
+			sb.WriteString("Related:\n")
+			limit := 8
+			if len(ddg.RelatedTopics) < limit {
+				limit = len(ddg.RelatedTopics)
+			}
+			for i := 0; i < limit; i++ {
+				rt := ddg.RelatedTopics[i]
+				if rt.Text != "" {
+					sb.WriteString(fmt.Sprintf("- %s\n  %s\n", rt.Text, rt.FirstURL))
+				}
+			}
+		}
+	}
+
+	result := sb.String()
+	if result == "" {
+		// Fallback: return raw response snippet
+		result = fmt.Sprintf("Search results for %q (raw):\n%s", query, string(rawJSON[:min(n, 2048)]))
+	}
+
+	return ToolResult{Success: true, Output: result}
 }
 
 // --- helpers ---

@@ -99,5 +99,74 @@
       },
       "required": []
     }
+  },
+  {
+    "name": "WebFetchTool",
+    "responsibility": "fetch web page content",
+    "description": "Fetch the content of a URL and return the response body as text. Useful for reading documentation, APIs, or web pages. Limited to 10KB response.",
+    "source_hint": "tools/web",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "description": "The URL to fetch" }
+      },
+      "required": ["url"]
+    }
+  },
+  {
+    "name": "WebSearchTool",
+    "responsibility": "search the web",
+    "description": "Search the web for information using DuckDuckGo. Returns abstracts, answers, and related topics. No API key required.",
+    "source_hint": "tools/web",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "The search query" }
+      },
+      "required": ["query"]
+    }
+  },
+  {
+    "name": "NotebookEditTool",
+    "responsibility": "edit Jupyter notebook cells",
+    "description": "Edit a Jupyter notebook (.ipynb) file by replacing an exact string match with new content. Works like FileEditTool but for notebook JSON files.",
+    "source_hint": "tools/file",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "Path to the .ipynb notebook file" },
+        "old_text": { "type": "string", "description": "Exact text to find and replace" },
+        "new_text": { "type": "string", "description": "Replacement text" }
+      },
+      "required": ["path", "old_text", "new_text"]
+    }
+  },
+  {
+    "name": "orchestrator_delegate",
+    "responsibility": "delegate task to specialist sub-agent",
+    "description": "Delegate a task to a named specialist sub-agent and wait for the result. Available agents: coordinator (task decomposition), deep-worker (research and analysis), planner (structured planning), debugger (error diagnosis). Use this when a task requires specialized expertise or when you want to parallelize work.",
+    "source_hint": "orchestrator",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "agent_name": { "type": "string", "description": "Name of the sub-agent: coordinator, deep-worker, planner, or debugger" },
+        "task": { "type": "string", "description": "The task description to send to the sub-agent" }
+      },
+      "required": ["agent_name", "task"]
+    }
+  },
+  {
+    "name": "orchestrator_delegate_bg",
+    "responsibility": "delegate task to background sub-agent",
+    "description": "Delegate a task to a named specialist sub-agent in the background. Returns immediately with a confirmation. The agent runs asynchronously. Use this for tasks that can run in parallel.",
+    "source_hint": "orchestrator",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "agent_name": { "type": "string", "description": "Name of the sub-agent: coordinator, deep-worker, planner, or debugger" },
+        "task": { "type": "string", "description": "The task description to send to the sub-agent" }
+      },
+      "required": ["agent_name", "task"]
+    }
   }
 ]
