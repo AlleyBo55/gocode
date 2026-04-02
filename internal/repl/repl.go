@@ -10,6 +10,7 @@ import (
 
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
+	"github.com/AlleyBo55/gocode/internal/initdeep"
 )
 
 // REPLConfig holds configuration for the REPL display.
@@ -74,6 +75,19 @@ func (r *REPL) Run(ctx context.Context) error {
 			continue
 		case CmdCost:
 			r.display.Usage(r.runtime.GetUsage().Render())
+			continue
+		case CmdPlan:
+			fmt.Fprintln(r.writer, "Planning mode is not yet wired to a provider. Use /plan after configuring an orchestrator.")
+			continue
+		case CmdInitDeep:
+			fmt.Fprintln(r.writer, "Generating AGENTS.md context files...")
+			gen := initdeep.NewGenerator()
+			report, err := gen.Generate(".")
+			if err != nil {
+				fmt.Fprintf(r.writer, "Error: %v\n", err)
+			} else {
+				fmt.Fprintf(r.writer, "Created %d AGENTS.md files, skipped %d existing.\n", len(report.Created), len(report.Skipped))
+			}
 			continue
 		}
 

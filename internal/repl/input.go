@@ -14,6 +14,8 @@ const (
 	CmdExit
 	CmdClear
 	CmdCost
+	CmdPlan
+	CmdInitDeep
 )
 
 // ParseSlashCommand checks if input is a slash command.
@@ -26,6 +28,10 @@ func ParseSlashCommand(input string) SlashCommand {
 		return CmdClear
 	case "/cost":
 		return CmdCost
+	case "/plan":
+		return CmdPlan
+	case "/init-deep":
+		return CmdInitDeep
 	default:
 		return CmdNone
 	}

@@ -5,32 +5,125 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/AlleyBo55/gocode/data"
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
+	"github.com/AlleyBo55/gocode/internal/astgrep"
 	"github.com/AlleyBo55/gocode/internal/bootstrap"
 	"github.com/AlleyBo55/gocode/internal/commandgraph"
 	"github.com/AlleyBo55/gocode/internal/commands"
 	"github.com/AlleyBo55/gocode/internal/execution"
+	"github.com/AlleyBo55/gocode/internal/hashline"
+	"github.com/AlleyBo55/gocode/internal/initdeep"
 	"github.com/AlleyBo55/gocode/internal/manifest"
 	"github.com/AlleyBo55/gocode/internal/mcp"
+	"github.com/AlleyBo55/gocode/internal/mcpclient"
 	"github.com/AlleyBo55/gocode/internal/modes"
-	"github.com/AlleyBo55/gocode/internal/repl"
+	"github.com/AlleyBo55/gocode/internal/orchestrator"
 	"github.com/AlleyBo55/gocode/internal/permissions"
 	"github.com/AlleyBo55/gocode/internal/queryengine"
+	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/runtime"
 	"github.com/AlleyBo55/gocode/internal/session"
 	"github.com/AlleyBo55/gocode/internal/setup"
+	"github.com/AlleyBo55/gocode/internal/skills"
+	"github.com/AlleyBo55/gocode/internal/tmux"
 	"github.com/AlleyBo55/gocode/internal/toolimpl"
 	"github.com/AlleyBo55/gocode/internal/toolpool"
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.2.2"
+var version = "v0.3.0"
+
+// stdRecoveryLogger logs recovery events to stderr via the standard log package.
+type stdRecoveryLogger struct{}
+
+func (stdRecoveryLogger) OnRecovery(action string, detail string) {
+	log.Printf("[recovery] %s: %s", action, detail)
+}
+
+// wireAdvancedTools registers Phase 1 hashline/context-aware wrappers and
+// Phase 3 tools (ast-grep, tmux, MCP client) into the tool registry.
+// Returns a cleanup function that should be deferred.
+func wireAdvancedTools(toolImpl *toolimpl.Registry, hashlineEnabled bool) func() {
+	// Phase 1: hashline wrappers (conditional)
+	if hashlineEnabled {
+		hashline.RegisterHashlineTools(toolImpl)
+	}
+
+	// Phase 1: context-aware read (always enabled — wraps filereadtool with AGENTS.md)
+	initdeep.RegisterContextAwareRead(toolImpl)
+
+	// Phase 3: ast-grep tool
+	astgrep.RegisterAstGrepTool(toolImpl)
+
+	// Phase 3: tmux tools
+	tmuxMgr := tmux.NewManager()
+	tmux.RegisterTmuxTools(toolImpl, tmuxMgr)
+
+	// Phase 3: MCP client tools (conditional — connect configured servers)
+	mcpConfigPath := filepath.Join(".gocode", "mcp.json")
+	mcpMgr, err := mcpclient.NewManager(mcpConfigPath)
+	if err != nil {
+		log.Printf("[mcpclient] failed to create manager: %v", err)
+		return tmuxMgr.KillAll
+	}
+
+	// Best-effort connect — failures are logged, not fatal
+	if connectErr := mcpMgr.ConnectAll(); connectErr != nil {
+		log.Printf("[mcpclient] %v", connectErr)
+	}
+
+	// Register discovered MCP tools in the tool registry
+	for _, t := range mcpMgr.ListTools() {
+		toolName := t.Name
+		toolImpl.Set(toolName, &mcpToolAdapter{mgr: mcpMgr, toolName: toolName})
+	}
+
+	return func() {
+		tmuxMgr.KillAll()
+		mcpMgr.Close()
+	}
+}
+
+// mcpToolAdapter adapts an MCP client tool call to the toolimpl.ToolExecutor interface.
+type mcpToolAdapter struct {
+	mgr      *mcpclient.Manager
+	toolName string
+}
+
+func (a *mcpToolAdapter) Execute(params map[string]interface{}) toolimpl.ToolResult {
+	output, err := a.mgr.CallTool(a.toolName, params)
+	if err != nil {
+		return toolimpl.ToolResult{Success: false, Error: err.Error()}
+	}
+	return toolimpl.ToolResult{Success: true, Output: output}
+}
+
+// buildFallbackProvider wraps a single resolved provider into a FallbackProvider
+// with a chain of one entry. Users can configure additional entries via config later.
+func buildFallbackProvider(provider apiclient.Provider, model string) *apiclient.FallbackProvider {
+	return apiclient.NewFallbackProvider([]apiclient.FallbackEntry{
+		{Model: model, Provider: provider},
+	}, nil)
+}
+
+// buildModelRouter creates a ModelRouter that maps all categories to the same
+// FallbackProvider. This is the default single-model configuration.
+func buildModelRouter(fp *apiclient.FallbackProvider) *apiclient.ModelRouter {
+	return apiclient.NewModelRouter(map[apiclient.TaskCategory]*apiclient.FallbackProvider{
+		apiclient.CategoryDeep:              fp,
+		apiclient.CategoryQuick:             fp,
+		apiclient.CategoryVisualEngineering: fp,
+		apiclient.CategoryUltrabrain:        fp,
+	})
+}
 
 func main() {
 	// Initialize registries from embedded data.
@@ -423,14 +516,36 @@ func main() {
 			maxTurns, _ := cmd.Flags().GetInt("max-turns")
 			maxTokens, _ := cmd.Flags().GetInt("max-tokens")
 			apiKey, _ := cmd.Flags().GetString("api-key")
+			hashlineEnabled, _ := cmd.Flags().GetBool("hashline")
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
 				return fmt.Errorf("resolving provider: %w", err)
 			}
 
+			// Phase 1: wrap provider with FallbackProvider and ModelRouter
+			fp := buildFallbackProvider(provider, resolvedModel)
+			router := buildModelRouter(fp)
+
 			toolImpl := toolimpl.NewRegistry()
+
+			// Phase 1 + Phase 3: register advanced tools (hashline, context-aware read, ast-grep, tmux, MCP client)
+			cleanup := wireAdvancedTools(toolImpl, hashlineEnabled)
+			defer cleanup()
+
 			executor := agent.NewRegistryExecutor(toolImpl, toolReg)
+
+			// Phase 2: create Orchestrator with ModelRouter and executor
+			_ = orchestrator.NewOrchestrator(router, executor)
+
+			// Phase 2: load skills on startup
+			skillLoader := skills.NewSkillLoader("")
+			loadedSkills, skillErrs := skillLoader.LoadAll()
+			for _, e := range skillErrs {
+				log.Printf("[skills] %v", e)
+			}
+			log.Printf("[skills] loaded %d skills", len(loadedSkills))
+
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
 
 			prompter := &repl.TerminalPermissionPrompter{
@@ -438,8 +553,9 @@ func main() {
 				Writer:  os.Stdout,
 			}
 
-			runtime := agent.NewConversationRuntime(agent.RuntimeOptions{
-				Provider:      provider,
+			// Use FallbackProvider (which implements Provider) for the runtime
+			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
+				Provider:      fp,
 				Executor:      executor,
 				Model:         resolvedModel,
 				MaxTokens:     maxTokens,
@@ -450,7 +566,10 @@ func main() {
 				ToolCb:        &repl.TerminalToolCallback{Writer: os.Stdout},
 			})
 
-			r := repl.NewREPL(runtime, os.Stdin, os.Stdout, repl.REPLConfig{
+			// Phase 1: wrap runtime with SessionRecoveryManager
+			_ = agent.NewSessionRecoveryManager(rt, sessionStore, stdRecoveryLogger{})
+
+			r := repl.NewREPL(rt, os.Stdin, os.Stdout, repl.REPLConfig{
 				Version:  version,
 				Model:    resolvedModel,
 				MaxTurns: maxTurns,
@@ -462,6 +581,7 @@ func main() {
 	chatCmd.Flags().Int("max-turns", 30, "Maximum agent loop iterations")
 	chatCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
 	chatCmd.Flags().String("api-key", "", "API key (overrides env vars)")
+	chatCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
 	rootCmd.AddCommand(chatCmd)
 
 	// 23. prompt — one-shot agent mode
@@ -475,18 +595,41 @@ func main() {
 			maxTokens, _ := cmd.Flags().GetInt("max-tokens")
 			apiKey, _ := cmd.Flags().GetString("api-key")
 			noStream, _ := cmd.Flags().GetBool("no-stream")
+			hashlineEnabled, _ := cmd.Flags().GetBool("hashline")
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
 				return fmt.Errorf("resolving provider: %w", err)
 			}
 
+			// Phase 1: wrap provider with FallbackProvider and ModelRouter
+			fp := buildFallbackProvider(provider, resolvedModel)
+			router := buildModelRouter(fp)
+
 			toolImpl := toolimpl.NewRegistry()
+
+			// Phase 1 + Phase 3: register advanced tools
+			cleanup := wireAdvancedTools(toolImpl, hashlineEnabled)
+			defer cleanup()
+
 			executor := agent.NewRegistryExecutor(toolImpl, toolReg)
+
+			// Phase 2: create Orchestrator with ModelRouter and executor
+			_ = orchestrator.NewOrchestrator(router, executor)
+
+			// Phase 2: load skills on startup
+			skillLoader := skills.NewSkillLoader("")
+			loadedSkills, skillErrs := skillLoader.LoadAll()
+			for _, e := range skillErrs {
+				log.Printf("[skills] %v", e)
+			}
+			log.Printf("[skills] loaded %d skills", len(loadedSkills))
+
 			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
 
-			runtime := agent.NewConversationRuntime(agent.RuntimeOptions{
-				Provider:      provider,
+			// Use FallbackProvider (which implements Provider) for the runtime
+			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
+				Provider:      fp,
 				Executor:      executor,
 				Model:         resolvedModel,
 				MaxTokens:     maxTokens,
@@ -495,7 +638,10 @@ func main() {
 				PermMode:      agent.DangerFullAccess,
 			})
 
-			return repl.RunOneShot(context.Background(), runtime, args[0], !noStream, os.Stdout)
+			// Phase 1: wrap runtime with SessionRecoveryManager
+			_ = agent.NewSessionRecoveryManager(rt, sessionStore, stdRecoveryLogger{})
+
+			return repl.RunOneShot(context.Background(), rt, args[0], !noStream, os.Stdout)
 		},
 	}
 	promptCmd.Flags().String("model", "sonnet", "Model name or alias")
@@ -503,6 +649,7 @@ func main() {
 	promptCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
 	promptCmd.Flags().String("api-key", "", "API key (overrides env vars)")
 	promptCmd.Flags().Bool("no-stream", false, "Disable streaming output")
+	promptCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
 	rootCmd.AddCommand(promptCmd)
 
 	// 21. mcp-serve

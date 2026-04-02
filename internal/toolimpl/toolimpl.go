@@ -44,6 +44,11 @@ func NewRegistry() *Registry {
 	return r
 }
 
+// Set registers (or replaces) the executor for the given tool name.
+func (r *Registry) Set(name string, executor ToolExecutor) {
+	r.executors[strings.ToLower(name)] = executor
+}
+
 // Get returns the executor for the given tool name (case-insensitive), or nil.
 func (r *Registry) Get(name string) ToolExecutor {
 	return r.executors[strings.ToLower(name)]
