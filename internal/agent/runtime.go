@@ -186,10 +186,18 @@ func (r *ConversationRuntime) streamLoop(ctx context.Context) (<-chan apitypes.S
 				switch ev.Kind {
 				case "content_block_start":
 					if ev.ContentBlock != nil {
-						contentBlocks = append(contentBlocks, *ev.ContentBlock)
+						// Ensure contentBlocks is large enough for the index
+						for len(contentBlocks) <= ev.Index {
+							contentBlocks = append(contentBlocks, apitypes.OutputContentBlock{})
+						}
+						contentBlocks[ev.Index] = *ev.ContentBlock
 					}
 				case "content_block_delta":
-					if ev.BlockDelta != nil && ev.Index < len(contentBlocks) {
+					if ev.BlockDelta != nil {
+						// Grow contentBlocks if needed (OpenAI uses offset indices)
+						for len(contentBlocks) <= ev.Index {
+							contentBlocks = append(contentBlocks, apitypes.OutputContentBlock{})
+						}
 						block := &contentBlocks[ev.Index]
 						switch ev.BlockDelta.Kind {
 						case "text_delta":
