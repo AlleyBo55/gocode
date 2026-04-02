@@ -89,7 +89,16 @@ func NewConversationRuntime(opts RuntimeOptions) *ConversationRuntime {
 // SendUserMessage runs the full agent loop: send prompt, execute tools, loop until done.
 func (r *ConversationRuntime) SendUserMessage(ctx context.Context, text string) (*apitypes.MessageResponse, error) {
 	r.session = append(r.session, apitypes.UserText(text))
+	return r.sendLoop(ctx)
+}
 
+// SendWithMessage runs the full agent loop with a pre-built message (for multimodal input).
+func (r *ConversationRuntime) SendWithMessage(ctx context.Context, msg apitypes.InputMessage) (*apitypes.MessageResponse, error) {
+	r.session = append(r.session, msg)
+	return r.sendLoop(ctx)
+}
+
+func (r *ConversationRuntime) sendLoop(ctx context.Context) (*apitypes.MessageResponse, error) {
 	for iteration := 0; iteration < r.maxIter; iteration++ {
 		req := r.buildRequest()
 		resp, err := r.provider.SendMessage(ctx, req)
@@ -141,7 +150,16 @@ func (r *ConversationRuntime) SendUserMessage(ctx context.Context, text string) 
 // For multi-turn tool loops, it internally handles tool execution and re-streams.
 func (r *ConversationRuntime) StreamUserMessage(ctx context.Context, text string) (<-chan apitypes.StreamEvent, error) {
 	r.session = append(r.session, apitypes.UserText(text))
+	return r.streamLoop(ctx)
+}
 
+// StreamWithMessage runs the agent loop with streaming for a pre-built message (for multimodal input).
+func (r *ConversationRuntime) StreamWithMessage(ctx context.Context, msg apitypes.InputMessage) (<-chan apitypes.StreamEvent, error) {
+	r.session = append(r.session, msg)
+	return r.streamLoop(ctx)
+}
+
+func (r *ConversationRuntime) streamLoop(ctx context.Context) (<-chan apitypes.StreamEvent, error) {
 	outCh := make(chan apitypes.StreamEvent, 64)
 	go func() {
 		defer close(outCh)

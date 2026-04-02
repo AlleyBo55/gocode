@@ -22,10 +22,15 @@ func isBackspace(msg bubbletea.KeyMsg) bool {
 	return msg.Type == bubbletea.KeyBackspace
 }
 
+func isCtrlD(msg bubbletea.KeyMsg) bool {
+	return msg.Type == bubbletea.KeyCtrlD
+}
+
 func helpBar(width int) string {
 	keys := []struct{ key, desc string }{
 		{"Enter", "send"},
 		{"Tab", "mode"},
+		{"Ctrl+D", "diff"},
 		{"Esc", "cancel"},
 		{"Ctrl+C", "quit"},
 		{"/help", "commands"},

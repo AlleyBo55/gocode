@@ -275,11 +275,32 @@ func (r *REPL) Run(ctx context.Context) error {
 		}()
 
 		spin.Start()
-		eventCh, err := r.runtime.StreamUserMessage(msgCtx, input)
-		if err != nil {
+
+		// Check for image paths in input
+		var eventCh <-chan apitypes.StreamEvent
+		var streamErr error
+		imagePath := extractImagePath(input)
+		if imagePath != "" {
+			textPart := strings.Replace(input, imagePath, "", 1)
+			textPart = strings.TrimSpace(textPart)
+			if textPart == "" {
+				textPart = "What's in this image?"
+			}
+			imgMsg, imgErr := apitypes.UserImageAndText(textPart, imagePath)
+			if imgErr != nil {
+				spin.Stop()
+				cancel()
+				fmt.Fprintf(r.writer, "Error loading image: %v\n", imgErr)
+				continue
+			}
+			eventCh, streamErr = r.runtime.StreamWithMessage(msgCtx, imgMsg)
+		} else {
+			eventCh, streamErr = r.runtime.StreamUserMessage(msgCtx, input)
+		}
+		if streamErr != nil {
 			spin.Stop()
 			cancel()
-			r.display.Error(err)
+			r.display.Error(streamErr)
 			fmt.Fprintln(r.writer)
 			continue
 		}
@@ -299,6 +320,24 @@ func (r *REPL) Run(ctx context.Context) error {
 		cancel()
 		fmt.Fprintln(r.writer)
 	}
+}
+
+// extractImagePath finds the first word in input that looks like an image file path.
+func extractImagePath(input string) string {
+	imageExts := []string{".png", ".jpg", ".jpeg", ".gif", ".webp"}
+	words := strings.Fields(input)
+	for _, word := range words {
+		lower := strings.ToLower(word)
+		for _, ext := range imageExts {
+			if strings.HasSuffix(lower, ext) {
+				// Check if file exists
+				if _, err := os.Stat(word); err == nil {
+					return word
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // handleSkillCommand processes the /skill slash command.

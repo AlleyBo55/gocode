@@ -3,12 +3,14 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
 	bubbletea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/AlleyBo55/gocode/internal/agent"
+	"github.com/AlleyBo55/gocode/internal/apitypes"
 	"github.com/AlleyBo55/gocode/internal/skills"
 )
 
@@ -44,20 +46,22 @@ type ChatMessage struct {
 
 // Model is the main bubbletea model.
 type Model struct {
-	runtime   *agent.ConversationRuntime
-	config    Config
-	width     int
-	height    int
-	mode      Mode
-	input     string
-	messages  []ChatMessage
-	streaming bool
-	streamBuf string
-	statusMsg string
-	quitting  bool
-	scroll    int
-	ctx       context.Context
-	cancel    context.CancelFunc
+	runtime     *agent.ConversationRuntime
+	config      Config
+	width       int
+	height      int
+	mode        Mode
+	input       string
+	messages    []ChatMessage
+	streaming   bool
+	streamBuf   string
+	statusMsg   string
+	quitting    bool
+	scroll      int
+	showDiff    bool
+	diffContent string
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // Message types for async operations.
@@ -130,6 +134,13 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 			}
 			return m, nil
 		}
+		if isCtrlD(msg) {
+			m.showDiff = !m.showDiff
+			if m.showDiff {
+				m.refreshDiff()
+			}
+			return m, nil
+		}
 		if isEnter(msg) {
 			text := strings.TrimSpace(m.input)
 			if text == "" {
@@ -167,6 +178,10 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		}
 		usage := m.runtime.GetUsage()
 		m.statusMsg = fmt.Sprintf("%d tokens", usage.TotalTokens())
+		// Refresh diff after each assistant response
+		if m.showDiff {
+			m.refreshDiff()
+		}
 		return m, nil
 
 	case streamErrorMsg:
@@ -190,7 +205,25 @@ func (m Model) sendMessage(text string) bubbletea.Cmd {
 	rt := m.runtime
 	ctx := m.ctx
 	return func() bubbletea.Msg {
-		eventCh, err := rt.StreamUserMessage(ctx, text)
+		var eventCh <-chan apitypes.StreamEvent
+		var err error
+
+		// Check for image paths in input
+		imagePath := extractTUIImagePath(text)
+		if imagePath != "" {
+			textPart := strings.Replace(text, imagePath, "", 1)
+			textPart = strings.TrimSpace(textPart)
+			if textPart == "" {
+				textPart = "What's in this image?"
+			}
+			imgMsg, imgErr := apitypes.UserImageAndText(textPart, imagePath)
+			if imgErr != nil {
+				return streamErrorMsg{err: imgErr}
+			}
+			eventCh, err = rt.StreamWithMessage(ctx, imgMsg)
+		} else {
+			eventCh, err = rt.StreamUserMessage(ctx, text)
+		}
 		if err != nil {
 			return streamErrorMsg{err: err}
 		}
@@ -216,6 +249,23 @@ func (m Model) sendMessage(text string) bubbletea.Cmd {
 			toolEvents: toolEvents,
 		}
 	}
+}
+
+// extractTUIImagePath finds the first word in input that looks like an image file path.
+func extractTUIImagePath(input string) string {
+	imageExts := []string{".png", ".jpg", ".jpeg", ".gif", ".webp"}
+	words := strings.Fields(input)
+	for _, word := range words {
+		lower := strings.ToLower(word)
+		for _, ext := range imageExts {
+			if strings.HasSuffix(lower, ext) {
+				if _, err := os.Stat(word); err == nil {
+					return word
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // streamResultMsg carries the complete streamed response.
@@ -278,6 +328,11 @@ func (m Model) View() string {
 	}
 
 	// Render chat messages
+	chatWidth := w
+	if m.showDiff {
+		chatWidth = w * 70 / 100
+	}
+
 	var chatLines []string
 	if len(m.messages) == 0 {
 		// Show gopher welcome art centered
@@ -287,7 +342,7 @@ func (m Model) View() string {
 		}
 	} else {
 		for _, msg := range m.messages {
-			chatLines = append(chatLines, renderChatMessage(msg, w-2)...)
+			chatLines = append(chatLines, renderChatMessage(msg, chatWidth-2)...)
 		}
 	}
 
@@ -302,6 +357,13 @@ func (m Model) View() string {
 	}
 
 	chat := strings.Join(chatLines, "\n")
+
+	if m.showDiff {
+		diffWidth := w - chatWidth
+		diffPanel := renderDiff(m.diffContent, diffWidth, chatHeight)
+		diffStyled := diffPanelStyle.Width(diffWidth).Height(chatHeight).Render(diffPanel)
+		chat = lipgloss.JoinHorizontal(lipgloss.Top, chat, diffStyled)
+	}
 
 	return header + "\n" + chat + "\n" + statusLine + "\n" + inputLine + "\n" + help
 }
@@ -365,6 +427,51 @@ func gitBranch() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// refreshDiff runs git diff and stores the result.
+func (m *Model) refreshDiff() {
+	out, err := exec.Command("git", "diff").Output()
+	if err != nil {
+		m.diffContent = "(git diff failed)"
+		return
+	}
+	m.diffContent = string(out)
+	if strings.TrimSpace(m.diffContent) == "" {
+		m.diffContent = "(no changes)"
+	}
+}
+
+// renderDiff formats diff content with colored +/- lines.
+func renderDiff(diff string, width, height int) string {
+	lines := strings.Split(diff, "\n")
+	var rendered []string
+	for _, line := range lines {
+		if len(rendered) >= height {
+			break
+		}
+		// Truncate long lines
+		if len(line) > width-2 {
+			line = line[:width-5] + "..."
+		}
+		switch {
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			rendered = append(rendered, diffAddStyle.Render(line))
+		case strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---"):
+			rendered = append(rendered, diffRemoveStyle.Render(line))
+		case strings.HasPrefix(line, "@@"):
+			rendered = append(rendered, diffHeaderStyle.Render(line))
+		case strings.HasPrefix(line, "diff "):
+			rendered = append(rendered, diffHeaderStyle.Render(line))
+		default:
+			rendered = append(rendered, toolStyle.Render(line))
+		}
+	}
+	// Pad to height
+	for len(rendered) < height {
+		rendered = append(rendered, "")
+	}
+	return strings.Join(rendered, "\n")
 }
 
 // Run starts the TUI program.

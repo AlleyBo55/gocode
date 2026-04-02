@@ -81,6 +81,23 @@ var (
 			Foreground(goBlue).
 			Bold(true)
 
+	// Diff panel styles
+	diffPanelStyle = lipgloss.NewStyle().
+			BorderLeft(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(goGray).
+			Padding(0, 1)
+
+	diffAddStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("114")) // green
+
+	diffRemoveStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("203")) // red
+
+	diffHeaderStyle = lipgloss.NewStyle().
+			Foreground(goBlue).
+			Bold(true)
+
 	// Gopher ASCII art for empty state
 	_ = gopherArt // unused placeholder
 	gopherArt = string(goBlue)

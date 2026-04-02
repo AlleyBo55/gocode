@@ -1,6 +1,13 @@
 package apitypes
 
-import "encoding/json"
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
 
 // --- Request Types ---
 
@@ -48,8 +55,51 @@ func UserToolResult(toolUseID, content string, isError bool) InputMessage {
 	}
 }
 
+// UserImageAndText creates a user message with an image and text.
+func UserImageAndText(text string, imagePath string) (InputMessage, error) {
+	data, err := os.ReadFile(imagePath)
+	if err != nil {
+		return InputMessage{}, fmt.Errorf("reading image: %w", err)
+	}
+
+	// Detect media type from extension
+	ext := strings.ToLower(filepath.Ext(imagePath))
+	mediaType := "image/png"
+	switch ext {
+	case ".jpg", ".jpeg":
+		mediaType = "image/jpeg"
+	case ".gif":
+		mediaType = "image/gif"
+	case ".webp":
+		mediaType = "image/webp"
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+
+	blocks := []InputContentBlock{
+		{
+			Kind: "image",
+			Source: &ImageSource{
+				Type:      "base64",
+				MediaType: mediaType,
+				Data:      encoded,
+			},
+		},
+		{Kind: "text", Text: text},
+	}
+
+	return InputMessage{Role: "user", Content: blocks}, nil
+}
+
+// ImageSource holds base64-encoded image data for multimodal input.
+type ImageSource struct {
+	Type      string `json:"type"`       // "base64"
+	MediaType string `json:"media_type"` // "image/jpeg", "image/png", etc.
+	Data      string `json:"data"`       // base64-encoded image data
+}
+
 // InputContentBlock is a union type with Kind discriminator.
-// Kind: "text", "tool_use", "tool_result"
+// Kind: "text", "tool_use", "tool_result", "image"
 type InputContentBlock struct {
 	Kind      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
@@ -59,6 +109,7 @@ type InputContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
+	Source    *ImageSource    `json:"source,omitempty"` // for image blocks
 }
 
 // ToolDef is an LLM tool definition.
