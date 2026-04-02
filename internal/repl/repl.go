@@ -754,6 +754,9 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 - When you need to edit a file, ALWAYS read it first so you have the exact content for old_text matching.
 - When running commands with BashTool, prefer non-interactive commands. Avoid interactive commands that require user input.
 - When using BashTool, do not use commands that produce very large outputs. If needed, pipe to head or tail.
+- When the user asks you to "search" or "look up" something, use WebSearchTool with a clear query. If the user doesn't specify a query, infer it from the conversation context. NEVER call WebSearchTool with an empty query.
+- WebSearchTool searches Wikipedia, GitHub, Reddit, Hacker News, and StackOverflow in parallel. Use it for current events, technical questions, people, projects, or any factual lookup.
+- When the user asks a follow-up like "search for that" or "look it up", construct the query from what was just discussed. Always provide the query parameter.
 
 # Making Code Changes
 
