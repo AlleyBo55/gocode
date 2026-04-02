@@ -327,6 +327,7 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 |-------|-------------|
 | 📖 **[Agent Mode Guide](docs/agent-mode.md)** | How to use `gocode chat` and `gocode prompt` — models, API keys, flags, slash commands, examples |
 | 🚀 **[Advanced Features](docs/advanced-features.md)** | Multi-agent orchestration, model fallback, planning mode, skills, LSP, AST-grep, tmux, MCP client, context generation |
+| 🎨 **[UX Features](docs/ux-features.md)** | Streaming responses, thinking blocks, slash commands, GOCODE.md project config, git context, cost estimation |
 | 🔌 **[MCP & IDE Integration Guide](docs/mcp-ide-guide.md)** | How to connect gocode to Cursor, Kiro, VS Code, Antigravity, Claude Desktop |
 | 🏗 **[Architecture](docs/architecture.md)** | Internal package structure, system diagrams, design decisions |
 | 📚 **[CLI Reference](docs/cli-reference.md)** | Full list of all 23 CLI commands with flags and examples |

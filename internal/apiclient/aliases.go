@@ -95,11 +95,28 @@ func DetectProviderKind(model string) ProviderKind {
 // MaxTokensForModel returns the max output tokens for a model.
 func MaxTokensForModel(model string) int {
 	canonical := strings.ToLower(ResolveModelAlias(model))
-	if strings.Contains(canonical, "opus") {
+	switch {
+	case strings.Contains(canonical, "gpt-5.4"):
+		return 128000
+	case strings.Contains(canonical, "gpt-4o"):
+		return 16384
+	case strings.Contains(canonical, "opus"):
 		return 32000
-	}
-	if strings.Contains(canonical, "gemini") {
+	case strings.Contains(canonical, "sonnet"):
+		return 64000
+	case strings.Contains(canonical, "haiku"):
+		return 8192
+	case strings.Contains(canonical, "gemini-3"):
 		return 65536
+	case strings.Contains(canonical, "gemini-2"):
+		return 65536
+	case strings.Contains(canonical, "grok"):
+		return 131072
+	case strings.Contains(canonical, "o3"), strings.Contains(canonical, "o4"):
+		return 100000
+	case strings.Contains(canonical, "codex"):
+		return 16384
+	default:
+		return 16384
 	}
-	return 64000
 }

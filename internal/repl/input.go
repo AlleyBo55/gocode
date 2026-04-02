@@ -17,6 +17,15 @@ const (
 	CmdPlan
 	CmdInitDeep
 	CmdSkill
+	CmdCompact
+	CmdModel
+	CmdHelp
+	CmdDiff
+	CmdUndo
+	CmdStatus
+	CmdReview
+	CmdPermissions
+	CmdDoctor
 )
 
 // ParseSlashCommand checks if input is a slash command.
@@ -26,6 +35,12 @@ func ParseSlashCommand(input string) SlashCommand {
 	// Handle commands that may have arguments.
 	if lower == "/skill" || strings.HasPrefix(lower, "/skill ") {
 		return CmdSkill
+	}
+	if lower == "/model" || strings.HasPrefix(lower, "/model ") {
+		return CmdModel
+	}
+	if lower == "/help" || strings.HasPrefix(lower, "/help ") {
+		return CmdHelp
 	}
 	switch lower {
 	case "/exit":
@@ -38,6 +53,20 @@ func ParseSlashCommand(input string) SlashCommand {
 		return CmdPlan
 	case "/init-deep":
 		return CmdInitDeep
+	case "/compact":
+		return CmdCompact
+	case "/diff":
+		return CmdDiff
+	case "/undo":
+		return CmdUndo
+	case "/status":
+		return CmdStatus
+	case "/review":
+		return CmdReview
+	case "/permissions":
+		return CmdPermissions
+	case "/doctor":
+		return CmdDoctor
 	default:
 		return CmdNone
 	}

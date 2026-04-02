@@ -25,14 +25,23 @@ func (d *Display) StreamEvent(ev apitypes.StreamEvent) {
 			switch ev.BlockDelta.Kind {
 			case "text_delta":
 				fmt.Fprint(d.w, ev.BlockDelta.Text)
+			case "thinking_delta":
+				fmt.Fprint(d.w, ev.BlockDelta.Thinking)
 			}
 		}
 	case "message_stop":
 		fmt.Fprintln(d.w)
 	case "content_block_start":
-		if ev.ContentBlock != nil && ev.ContentBlock.Kind == "tool_use" {
-			fmt.Fprintf(d.w, "\n%s⚡ %s%s\n", cBlue, ev.ContentBlock.Name, ansiReset)
+		if ev.ContentBlock != nil {
+			switch ev.ContentBlock.Kind {
+			case "tool_use":
+				fmt.Fprintf(d.w, "\n%s⚡ %s%s\n", cBlue, ev.ContentBlock.Name, ansiReset)
+			case "thinking":
+				fmt.Fprintf(d.w, "%s💭 ", cGray+ansiDim)
+			}
 		}
+	case "content_block_stop":
+		fmt.Fprint(d.w, ansiReset)
 	}
 }
 
@@ -49,6 +58,8 @@ func (d *Display) RenderResponse(resp *apitypes.MessageResponse) {
 				inputStr = string(block.Input)
 			}
 			fmt.Fprintf(d.w, "\n%s⚡ %s%s(%s)\n", cBlue, block.Name, ansiReset, cGray+summarizeJSON(inputStr)+ansiReset)
+		case "thinking":
+			fmt.Fprintf(d.w, "\n%s💭 %s%s\n", cGray+ansiDim, block.Thinking, ansiReset)
 		}
 	}
 }
