@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
@@ -116,11 +117,14 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintln(r.writer, "  /plan        Start planning session")
 			fmt.Fprintln(r.writer, "  /init-deep   Generate AGENTS.md files")
 			fmt.Fprintln(r.writer, "  /diff        Show git diff of changes")
-			fmt.Fprintln(r.writer, "  /undo        Revert uncommitted changes")
+			fmt.Fprintln(r.writer, "  /undo        Stash uncommitted changes")
+			fmt.Fprintln(r.writer, "  /redo        Restore stashed changes")
 			fmt.Fprintln(r.writer, "  /status      Show session stats")
 			fmt.Fprintln(r.writer, "  /review      Ask agent to review changes")
 			fmt.Fprintln(r.writer, "  /permissions Show permission mode")
 			fmt.Fprintln(r.writer, "  /doctor      Check environment")
+			fmt.Fprintln(r.writer, "  /connect     Show API key setup guide")
+			fmt.Fprintln(r.writer, "  /share       Export session / create gist")
 			continue
 		case CmdModel:
 			r.handleModelCommand(input)
@@ -134,9 +138,57 @@ func (r *REPL) Run(ctx context.Context) error {
 				fmt.Fprintln(r.writer, "Nothing to undo.")
 				continue
 			}
-			fmt.Fprintf(r.writer, "Reverting:\n%s", string(out))
-			exec.Command("git", "checkout", "--", ".").Run()
-			fmt.Fprintln(r.writer, "Changes reverted.")
+			fmt.Fprintf(r.writer, "Stashing:\n%s", string(out))
+			if stashErr := exec.Command("git", "stash", "push", "-m", "gocode-undo").Run(); stashErr != nil {
+				fmt.Fprintf(r.writer, "Error stashing changes: %v\n", stashErr)
+			} else {
+				fmt.Fprintln(r.writer, "Changes stashed (use /redo to restore).")
+			}
+			continue
+		case CmdRedo:
+			out, err := exec.Command("git", "stash", "list").Output()
+			if err != nil || strings.TrimSpace(string(out)) == "" {
+				fmt.Fprintln(r.writer, "Nothing to redo.")
+				continue
+			}
+			if !strings.Contains(string(out), "gocode-undo") {
+				fmt.Fprintln(r.writer, "No gocode undo stash found.")
+				continue
+			}
+			if popErr := exec.Command("git", "stash", "pop").Run(); popErr != nil {
+				fmt.Fprintf(r.writer, "Error restoring stash: %v\n", popErr)
+			} else {
+				fmt.Fprintln(r.writer, "Changes restored.")
+			}
+			continue
+		case CmdConnect:
+			fmt.Fprintln(r.writer, "Available providers:")
+			fmt.Fprintln(r.writer, "  1. Anthropic (Claude)  — export ANTHROPIC_API_KEY=...")
+			fmt.Fprintln(r.writer, "  2. OpenAI (GPT)        — export OPENAI_API_KEY=...")
+			fmt.Fprintln(r.writer, "  3. Google (Gemini)     — export GEMINI_API_KEY=...")
+			fmt.Fprintln(r.writer, "  4. xAI (Grok)          — export XAI_API_KEY=...")
+			fmt.Fprintln(r.writer, "")
+			fmt.Fprintln(r.writer, "Set your API key and restart gocode.")
+			continue
+		case CmdShare:
+			data, err := json.MarshalIndent(r.runtime.GetSession(), "", "  ")
+			if err != nil {
+				fmt.Fprintf(r.writer, "Error exporting session: %v\n", err)
+				continue
+			}
+			tmpFile := filepath.Join(os.TempDir(), "gocode-session.json")
+			if writeErr := os.WriteFile(tmpFile, data, 0644); writeErr != nil {
+				fmt.Fprintf(r.writer, "Error writing file: %v\n", writeErr)
+				continue
+			}
+			if _, lookErr := exec.LookPath("gh"); lookErr == nil {
+				out, ghErr := exec.Command("gh", "gist", "create", tmpFile, "--desc", "gocode session").Output()
+				if ghErr == nil {
+					fmt.Fprintf(r.writer, "Shared: %s\n", strings.TrimSpace(string(out)))
+					continue
+				}
+			}
+			fmt.Fprintf(r.writer, "Session exported to: %s\n", tmpFile)
 			continue
 		case CmdStatus:
 			cwd, _ := os.Getwd()
@@ -192,6 +244,12 @@ func (r *REPL) Run(ctx context.Context) error {
 				}
 			}
 			continue
+		}
+
+		// Feature 4: @general subagent inline — rewrite prompt for orchestrator
+		if strings.Contains(input, "@general") {
+			input = strings.Replace(input, "@general", "", 1)
+			input = "Use a sub-agent to handle this complex task: " + strings.TrimSpace(input)
 		}
 
 		// Show spinner while waiting for first token

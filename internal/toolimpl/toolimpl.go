@@ -222,6 +222,8 @@ func (t *FileEditTool) Execute(params map[string]interface{}) ToolResult {
 		return ToolResult{Success: false, Error: fmt.Sprintf("writing file: %v", err)}
 	}
 
+	FormatFile(path)
+
 	return ToolResult{Success: true, Output: fmt.Sprintf("Edited %s: replaced 1 occurrence", path)}
 }
 
@@ -247,6 +249,8 @@ func (t *FileWriteTool) Execute(params map[string]interface{}) ToolResult {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return ToolResult{Success: false, Error: fmt.Sprintf("writing file: %v", err)}
 	}
+
+	FormatFile(path)
 
 	return ToolResult{Success: true, Output: fmt.Sprintf("Wrote %d bytes to %s", len(content), path)}
 }
@@ -495,4 +499,34 @@ func toInt(v interface{}) (int, error) {
 		return strconv.Atoi(n)
 	}
 	return 0, fmt.Errorf("cannot convert %T to int", v)
+}
+
+// FormatFile runs the appropriate code formatter for the given file path.
+// It is best-effort: if the formatter binary is not found, it silently skips.
+func FormatFile(path string) {
+	ext := strings.ToLower(filepath.Ext(path))
+	var cmd *exec.Cmd
+	switch ext {
+	case ".go":
+		if p, err := exec.LookPath("goimports"); err == nil {
+			cmd = exec.Command(p, "-w", path)
+		} else if p, err := exec.LookPath("gofmt"); err == nil {
+			cmd = exec.Command(p, "-w", path)
+		}
+	case ".js", ".ts", ".jsx", ".tsx":
+		if p, err := exec.LookPath("prettier"); err == nil {
+			cmd = exec.Command(p, "--write", path)
+		}
+	case ".py":
+		if p, err := exec.LookPath("black"); err == nil {
+			cmd = exec.Command(p, path)
+		}
+	case ".rs":
+		if p, err := exec.LookPath("rustfmt"); err == nil {
+			cmd = exec.Command(p, path)
+		}
+	}
+	if cmd != nil {
+		_ = cmd.Run()
+	}
 }

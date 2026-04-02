@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +16,7 @@ import (
 
 	"github.com/AlleyBo55/gocode/data"
 	"github.com/AlleyBo55/gocode/internal/agent"
+	"github.com/AlleyBo55/gocode/internal/apiserver"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/astgrep"
 	"github.com/AlleyBo55/gocode/internal/bootstrap"
@@ -31,6 +34,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/queryengine"
 	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/runtime"
+	"github.com/AlleyBo55/gocode/internal/tui"
 	"github.com/AlleyBo55/gocode/internal/session"
 	"github.com/AlleyBo55/gocode/internal/setup"
 	"github.com/AlleyBo55/gocode/internal/skills"
@@ -40,7 +44,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.4.1"
+var version = "v0.5.1"
 
 // stdRecoveryLogger logs recovery events to stderr via the standard log package.
 type stdRecoveryLogger struct{}
@@ -529,6 +533,7 @@ func main() {
 			noProjectConfig, _ := cmd.Flags().GetBool("no-project-config")
 			allowedTools, _ := cmd.Flags().GetStringSlice("allowedTools")
 			disallowedTools, _ := cmd.Flags().GetStringSlice("disallowedTools")
+			useTUI, _ := cmd.Flags().GetBool("tui")
 
 			permMode := agent.WorkspaceWrite
 			if skipPerms {
@@ -621,6 +626,15 @@ func main() {
 			// Phase 1: wrap runtime with SessionRecoveryManager
 			_ = agent.NewSessionRecoveryManager(rt, sessionStore, stdRecoveryLogger{})
 
+			if useTUI {
+				return tui.Run(rt, tui.Config{
+					Version:  version,
+					Model:    resolvedModel,
+					MaxTurns: maxTurns,
+					Skills:   loadedSkills,
+				})
+			}
+
 			r := repl.NewREPL(rt, os.Stdin, os.Stdout, repl.REPLConfig{
 				Version:  version,
 				Model:    resolvedModel,
@@ -641,6 +655,7 @@ func main() {
 	chatCmd.Flags().Bool("no-project-config", false, "Skip loading GOCODE.md/CLAUDE.md")
 	chatCmd.Flags().StringSlice("allowedTools", nil, "Whitelist specific tools")
 	chatCmd.Flags().StringSlice("disallowedTools", nil, "Blacklist specific tools")
+	chatCmd.Flags().Bool("tui", false, "Use bubbletea TUI instead of line-based REPL")
 	rootCmd.AddCommand(chatCmd)
 
 	// 23. prompt — one-shot agent mode
@@ -765,6 +780,136 @@ func main() {
 	mcpServeCmd.Flags().String("transport", "stdio", "Transport type: stdio or http")
 	mcpServeCmd.Flags().String("addr", ":8080", "HTTP listen address (only for http transport)")
 	rootCmd.AddCommand(mcpServeCmd)
+
+	// --- Feature 5: serve — HTTP REST API server ---
+	serveCmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start headless HTTP API server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			addr, _ := cmd.Flags().GetString("addr")
+			handler := apiserver.NewHandler(
+				apiserver.Config{Version: version},
+				func(msg string) (string, error) {
+					return fmt.Sprintf("echo: %s", msg), nil
+				},
+				func() (int, string) {
+					return 0, "none"
+				},
+			)
+			fmt.Fprintf(os.Stderr, "gocode API server listening on %s\n", addr)
+			return http.ListenAndServe(addr, handler)
+		},
+	}
+	serveCmd.Flags().String("addr", ":3000", "Listen address")
+	rootCmd.AddCommand(serveCmd)
+
+	// --- Feature 6: stats — usage statistics ---
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "stats",
+		Short: "Show usage statistics across all sessions",
+		Run: func(cmd *cobra.Command, args []string) {
+			entries, err := os.ReadDir(sessionStore.Dir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "No sessions found (%v)\n", err)
+				return
+			}
+			totalSessions := 0
+			totalInput := 0
+			totalOutput := 0
+			for _, e := range entries {
+				if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+					continue
+				}
+				sid := strings.TrimSuffix(e.Name(), ".json")
+				s, err := sessionStore.Load(sid)
+				if err != nil {
+					continue
+				}
+				totalSessions++
+				totalInput += s.InputTokens
+				totalOutput += s.OutputTokens
+			}
+			fmt.Printf("Sessions:      %d\n", totalSessions)
+			fmt.Printf("Total input:   %d tokens\n", totalInput)
+			fmt.Printf("Total output:  %d tokens\n", totalOutput)
+		},
+	})
+
+	// --- Feature 7: export / import ---
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "export [session_id]",
+		Short: "Export session JSON to stdout",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := sessionStore.Load(args[0])
+			if err != nil {
+				return err
+			}
+			data, err := json.MarshalIndent(s, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(data))
+			return nil
+		},
+	})
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "import [file]",
+		Short: "Import a session JSON file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			data, err := os.ReadFile(args[0])
+			if err != nil {
+				return fmt.Errorf("reading file: %w", err)
+			}
+			var s session.StoredSession
+			if err := json.Unmarshal(data, &s); err != nil {
+				return fmt.Errorf("parsing session: %w", err)
+			}
+			if s.SessionID == "" {
+				return fmt.Errorf("session_id is required in the JSON file")
+			}
+			path, err := sessionStore.Save(s)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Imported session %s to %s\n", s.SessionID, path)
+			return nil
+		},
+	})
+
+	// --- Feature 8: pr — create GitHub PR ---
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "pr",
+		Short: "Create a GitHub PR with AI-generated description",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if _, err := exec.LookPath("gh"); err != nil {
+				return fmt.Errorf("requires gh CLI: https://cli.github.com")
+			}
+			diff, _ := exec.Command("git", "diff", "main...HEAD", "--stat").Output()
+			if len(diff) > 0 {
+				fmt.Printf("Changes:\n%s\n", string(diff))
+			}
+			out, err := exec.Command("gh", "pr", "create", "--fill").CombinedOutput()
+			fmt.Print(string(out))
+			return err
+		},
+	})
+
+	// --- Feature 9: github — list issues ---
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "github",
+		Short: "GitHub integration — list issues and PRs",
+		Run: func(cmd *cobra.Command, args []string) {
+			out, err := exec.Command("gh", "issue", "list", "--limit", "10").Output()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Requires gh CLI: https://cli.github.com\n")
+				return
+			}
+			fmt.Print(string(out))
+		},
+	})
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

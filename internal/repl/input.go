@@ -26,6 +26,9 @@ const (
 	CmdReview
 	CmdPermissions
 	CmdDoctor
+	CmdRedo
+	CmdConnect
+	CmdShare
 )
 
 // ParseSlashCommand checks if input is a slash command.
@@ -59,6 +62,8 @@ func ParseSlashCommand(input string) SlashCommand {
 		return CmdDiff
 	case "/undo":
 		return CmdUndo
+	case "/redo":
+		return CmdRedo
 	case "/status":
 		return CmdStatus
 	case "/review":
@@ -67,6 +72,10 @@ func ParseSlashCommand(input string) SlashCommand {
 		return CmdPermissions
 	case "/doctor":
 		return CmdDoctor
+	case "/connect":
+		return CmdConnect
+	case "/share":
+		return CmdShare
 	default:
 		return CmdNone
 	}
