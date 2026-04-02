@@ -238,7 +238,7 @@ func (m Model) View() string {
 	// Header
 	modeStr := m.mode.String()
 	header := headerStyle.Width(w).Render(
-		fmt.Sprintf(" gocode %s │ %s │ %s", m.config.Version, m.config.Model, modeStr),
+		fmt.Sprintf(" 🐹 gocode %s │ %s │ %s", m.config.Version, m.config.Model, modeStr),
 	)
 
 	// Help bar
@@ -279,8 +279,16 @@ func (m Model) View() string {
 
 	// Render chat messages
 	var chatLines []string
-	for _, msg := range m.messages {
-		chatLines = append(chatLines, renderChatMessage(msg, w-2)...)
+	if len(m.messages) == 0 {
+		// Show gopher welcome art centered
+		welcome := GopherWelcome()
+		for _, line := range strings.Split(welcome, "\n") {
+			chatLines = append(chatLines, line)
+		}
+	} else {
+		for _, msg := range m.messages {
+			chatLines = append(chatLines, renderChatMessage(msg, w-2)...)
+		}
 	}
 
 	// Scroll to bottom: show last chatHeight lines

@@ -28,6 +28,7 @@ func helpBar(width int) string {
 		{"Tab", "mode"},
 		{"Esc", "cancel"},
 		{"Ctrl+C", "quit"},
+		{"/help", "commands"},
 	}
 	var parts []string
 	for _, k := range keys {
