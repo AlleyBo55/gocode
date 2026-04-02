@@ -48,7 +48,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.8.0"
+var version = "v0.8.1"
 
 // isTerminal checks if stdout is a terminal (not piped).
 func isTerminal() bool {
@@ -642,9 +642,14 @@ func main() {
 				log.Printf("[verbose] model=%s maxTurns=%d maxTokens=%d", resolvedModel, maxTurns, maxTokens)
 			}
 
+			// Load trusted tools store
+			trustedStore := agent.NewTrustedToolStore("")
+			_ = trustedStore.Load()
+
 			prompter := &repl.TerminalPermissionPrompter{
 				Scanner: bufio.NewScanner(os.Stdin),
 				Writer:  os.Stdout,
+				Trusted: trustedStore,
 			}
 
 			// Use FallbackProvider (which implements Provider) for the runtime
@@ -667,6 +672,7 @@ func main() {
 				SystemPrompt:  systemPrompt,
 				PermMode:      permMode,
 				Prompter:      prompter,
+				Trusted:       trustedStore,
 				ToolCb:        toolCb,
 				Hooks:         hookRunner,
 			})

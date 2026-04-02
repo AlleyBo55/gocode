@@ -19,12 +19,17 @@ type PermissionPrompter interface {
 type PermissionPolicy struct {
 	Mode     PermissionMode
 	Prompter PermissionPrompter
+	Trusted  *TrustedToolStore
 }
 
 // Authorize checks if a tool invocation is allowed.
 // Returns true if allowed, false if denied, and an optional denial reason.
 func (p *PermissionPolicy) Authorize(toolName string, input string) (bool, string) {
 	if p.Mode == DangerFullAccess {
+		return true, ""
+	}
+	// Check trusted tools store before prompting
+	if p.Trusted != nil && p.Trusted.IsTrusted(toolName, input) {
 		return true, ""
 	}
 	// In WorkspaceWrite mode, prompt the user if a prompter is available

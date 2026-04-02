@@ -197,14 +197,19 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintf(r.writer, "Session exported to: %s\n", tmpFile)
 			continue
 		case CmdCommit:
+			// Check both unstaged and staged changes
 			stat, _ := exec.Command("git", "diff", "--stat").Output()
-			if strings.TrimSpace(string(stat)) == "" {
+			cachedStat, _ := exec.Command("git", "diff", "--cached", "--stat").Output()
+			combinedStat := strings.TrimSpace(string(stat)) + strings.TrimSpace(string(cachedStat))
+			if combinedStat == "" {
 				fmt.Fprintln(r.writer, "No changes to commit.")
 				continue
 			}
 			exec.Command("git", "add", "-A").Run()
+			// Re-read staged stat after add -A for the commit message
+			finalStat, _ := exec.Command("git", "diff", "--cached", "--stat").Output()
 			msg := "gocode: auto-commit"
-			if lines := strings.Split(strings.TrimSpace(string(stat)), "\n"); len(lines) > 0 {
+			if lines := strings.Split(strings.TrimSpace(string(finalStat)), "\n"); len(lines) > 0 && lines[0] != "" {
 				last := strings.TrimSpace(lines[len(lines)-1])
 				msg = "gocode: " + last
 			}
@@ -581,18 +586,77 @@ func summarizeToolInput(name string, input map[string]interface{}) string {
 type TerminalPermissionPrompter struct {
 	Scanner *bufio.Scanner
 	Writer  io.Writer
+	Trusted *agent.TrustedToolStore
 }
 
 // Prompt asks the user for permission, showing the tool name and params.
+// Options: y=yes once, n=deny, a=always trust this tool, t=trust tool:command prefix
 func (p *TerminalPermissionPrompter) Prompt(toolName string, operation string) (bool, error) {
 	summary := summarizeJSON(operation)
 	display := NewDisplay(p.Writer)
-	display.PermissionPrompt(toolName, summary)
+	display.PermissionPromptExtended(toolName, summary)
 	if !p.Scanner.Scan() {
 		return false, nil
 	}
 	answer := strings.TrimSpace(strings.ToLower(p.Scanner.Text()))
-	return answer == "y" || answer == "yes", nil
+	switch answer {
+	case "y", "yes":
+		return true, nil
+	case "a", "always":
+		// Trust this tool with any params
+		if p.Trusted != nil {
+			p.Trusted.Add(toolName)
+			_ = p.Trusted.Save()
+			fmt.Fprintf(p.Writer, "  ✓ Trusted %s (all future calls auto-approved)\n", toolName)
+		}
+		return true, nil
+	case "t", "trust":
+		// Trust tool with wildcard command prefix
+		if p.Trusted != nil {
+			// Extract a meaningful prefix from the operation
+			prefix := extractCommandPrefix(toolName, operation)
+			if prefix != "" {
+				pattern := toolName + ":" + prefix + " *"
+				p.Trusted.Add(pattern)
+				_ = p.Trusted.Save()
+				fmt.Fprintf(p.Writer, "  ✓ Trusted %s (auto-approved)\n", pattern)
+			} else {
+				p.Trusted.Add(toolName)
+				_ = p.Trusted.Save()
+				fmt.Fprintf(p.Writer, "  ✓ Trusted %s (all future calls auto-approved)\n", toolName)
+			}
+		}
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+// extractCommandPrefix pulls a meaningful prefix from tool params for wildcard trust.
+func extractCommandPrefix(toolName string, operation string) string {
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(operation), &m); err != nil {
+		return ""
+	}
+	// For BashTool, extract the first word of the command
+	if cmd, ok := m["command"].(string); ok {
+		parts := strings.Fields(cmd)
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	}
+	// For GrepTool/GlobTool, use the pattern
+	if pat, ok := m["pattern"].(string); ok {
+		return pat
+	}
+	// For file tools, use the path directory
+	if path, ok := m["path"].(string); ok {
+		dir := filepath.Dir(path)
+		if dir != "." && dir != "" {
+			return dir
+		}
+	}
+	return ""
 }
 
 // summarizeJSON returns a compact summary of a JSON string for display.

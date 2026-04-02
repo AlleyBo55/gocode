@@ -19,6 +19,7 @@ type RuntimeOptions struct {
 	SystemPrompt  string
 	PermMode      PermissionMode
 	Prompter      PermissionPrompter
+	Trusted       *TrustedToolStore
 	Hooks         HookRunner
 	ToolCb        ToolCallback
 }
@@ -80,7 +81,7 @@ func NewConversationRuntime(opts RuntimeOptions) *ConversationRuntime {
 		maxTokens:    maxTokens,
 		maxIter:      maxIter,
 		systemPrompt: opts.SystemPrompt,
-		permPolicy:   PermissionPolicy{Mode: opts.PermMode, Prompter: prompter},
+		permPolicy:   PermissionPolicy{Mode: opts.PermMode, Prompter: prompter, Trusted: opts.Trusted},
 		hooks:        hooks,
 		toolCb:       toolCb,
 	}

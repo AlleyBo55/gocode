@@ -79,3 +79,9 @@ func (d *Display) PermissionPrompt(toolName, operation string) {
 	fmt.Fprintf(d.w, "%s🔒 %s%s wants to run: %s%s%s\n", cYellow, cWhite+ansiBold, toolName, ansiReset+cGray, operation, ansiReset)
 	fmt.Fprintf(d.w, "   %sAllow? [y/N]:%s ", cYellow, ansiReset)
 }
+
+// PermissionPromptExtended displays a permission request with trust options.
+func (d *Display) PermissionPromptExtended(toolName, operation string) {
+	fmt.Fprintf(d.w, "%s🔒 %s%s%s wants to run: %s%s%s\n", cYellow, cWhite+ansiBold, toolName, ansiReset, cGray, operation, ansiReset)
+	fmt.Fprintf(d.w, "   %s[y]%s yes  %s[n]%s no  %s[a]%s always trust %s  %s[t]%s trust command%s: ", cGreen, ansiReset, cRed, ansiReset, cCyan, ansiReset, toolName, cCyan, ansiReset, ansiReset)
+}
