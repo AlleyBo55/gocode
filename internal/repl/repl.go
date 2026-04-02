@@ -588,18 +588,26 @@ func (t *TerminalToolCallback) OnToolEnd(name string, success bool) {
 
 // summarizeToolInput extracts the most useful param for display.
 func summarizeToolInput(name string, input map[string]interface{}) string {
-	if input == nil {
+	if input == nil || len(input) == 0 {
 		return ""
 	}
 	// Show the most relevant param based on tool type
-	for _, key := range []string{"path", "pattern", "command", "file", "name"} {
+	for _, key := range []string{"command", "path", "pattern", "query", "url", "file", "name", "agent_name", "task"} {
 		if v, ok := input[key]; ok {
 			s := fmt.Sprintf("%v", v)
-			if len(s) > 60 {
-				s = s[:57] + "..."
+			if len(s) > 80 {
+				s = s[:77] + "..."
 			}
-			return cGray + s + ansiReset
+			return cGray + key + "=" + s + ansiReset
 		}
+	}
+	// Fallback: show first key=value
+	for k, v := range input {
+		s := fmt.Sprintf("%v", v)
+		if len(s) > 60 {
+			s = s[:57] + "..."
+		}
+		return cGray + k + "=" + s + ansiReset
 	}
 	return ""
 }

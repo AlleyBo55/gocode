@@ -523,7 +523,7 @@ type WebSearchTool struct{}
 func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
 	query, _ := params["query"].(string)
 	if query == "" {
-		return ToolResult{Success: false, Error: "missing required param: query"}
+		return ToolResult{Success: false, Error: "missing required param: query. You MUST provide a search query string. Example: {\"query\": \"president of Indonesia 2024\"}"}
 	}
 
 	encodedQuery := strings.ReplaceAll(query, " ", "+")
