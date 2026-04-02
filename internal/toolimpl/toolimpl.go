@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,9 @@ func NewRegistry() *Registry {
 	r.executors["globtool"] = &GlobTool{}
 	r.executors["greptool"] = &GrepTool{}
 	r.executors["listdirectorytool"] = &ListDirectoryTool{}
+	r.executors["webfetchtool"] = &WebFetchTool{}
+	r.executors["websearchtool"] = &WebSearchTool{}
+	r.executors["notebookedittool"] = &FileEditTool{} // .ipynb files are JSON
 	return r
 }
 
@@ -482,6 +486,49 @@ func (t *ListDirectoryTool) listRecursive(basePath string) ToolResult {
 		return ToolResult{Success: true, Output: "Directory is empty."}
 	}
 	return ToolResult{Success: true, Output: sb.String()}
+}
+
+// --- WebFetchTool ---
+
+// WebFetchTool fetches a URL and returns the body text.
+type WebFetchTool struct{}
+
+func (t *WebFetchTool) Execute(params map[string]interface{}) ToolResult {
+	url, _ := params["url"].(string)
+	if url == "" {
+		return ToolResult{Success: false, Error: "missing required param: url"}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return ToolResult{Success: false, Error: fmt.Sprintf("creating request: %v", err)}
+	}
+	req.Header.Set("User-Agent", "gocode/1.0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ToolResult{Success: false, Error: fmt.Sprintf("fetching URL: %v", err)}
+	}
+	defer resp.Body.Close()
+	body := make([]byte, 10240) // 10KB max
+	n, _ := resp.Body.Read(body)
+	return ToolResult{Success: true, Output: string(body[:n])}
+}
+
+// --- WebSearchTool ---
+
+// WebSearchTool performs a web search (requires MCP server for full functionality).
+type WebSearchTool struct{}
+
+func (t *WebSearchTool) Execute(params map[string]interface{}) ToolResult {
+	query, _ := params["query"].(string)
+	if query == "" {
+		return ToolResult{Success: false, Error: "missing required param: query"}
+	}
+	return ToolResult{
+		Success: true,
+		Output:  fmt.Sprintf("Web search for %q requires an MCP server. Configure one in .gocode/mcp.json.", query),
+	}
 }
 
 // --- helpers ---

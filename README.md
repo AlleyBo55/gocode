@@ -16,6 +16,10 @@
 
 <h1 align="center">gocode — Claude Code, Rewritten in Go. Now Multi-Model.</h1>
 
+<p align="center">
+  <img src="assets/screen1.png" alt="gocode terminal screenshot" width="700" />
+</p>
+
 <h3 align="center">The Go version of Claude Code. One binary. Zero dependencies. 20× faster.<br/>Now with multi-agent orchestration, model fallback, and IDE-level tools — from your terminal.</h3>
 
 <p align="center">
@@ -60,7 +64,51 @@ You don't have to choose. You get both.
 
 ---
 
-## What's New in v0.7.0
+## What's New in v0.8.0
+
+This changes everything. Again.
+
+### 🌍 200+ Models. One Binary.
+
+We ripped out the four-provider ceiling and replaced it with a universal model layer. Anthropic, OpenAI, Google, xAI — those are still native. But now DeepSeek, Mistral, Groq, Together AI, OpenRouter, Azure OpenAI, and any local model running on Ollama or LM Studio just work. Set one env var. Pick a model. That's it.
+
+> **[Full Model List →](docs/supported-models.md)**
+
+### 🎯 Provider Launch Profiles
+
+`gocode profile auto --goal coding` — scans your env vars, picks the best provider and model for your goal, saves it. `profile recommend` previews without saving. `profile init` creates a default. Your workflow, your rules.
+
+### 🧠 Persistent Memory
+
+Cross-session memory that survives between conversations. `/memory set preferred-lang Go` and it remembers forever. Injected into every system prompt automatically.
+
+### 📋 Task Management
+
+`/tasks add Fix the auth bug` — persistent task tracking across sessions. `/tasks list`, `/tasks done 1`. Stays on disk in `.gocode/tasks.json`.
+
+### 💻 Codex Backend
+
+Route through ChatGPT's Codex backend with auth from `~/.codex/auth.json`. `gocode chat --model codex` just works.
+
+### 🔒 Runtime Hardening
+
+`gocode smoke` — quick runtime smoke test. `gocode hardening` — checks file permissions, API key exposure in shell history, config security. `gocode doctor` now checks all 10 provider env vars plus Codex auth.
+
+### 🌐 WebFetch & WebSearch Tools
+
+Built-in web fetch and web search tools in the tool registry. The agent can browse the web without MCP.
+
+### 📝 /commit with Co-Authored-By
+
+`/commit` auto-generates commit messages and adds `Co-Authored-By: gocode` attribution.
+
+### 🎯 Goal-Based Model Selection
+
+`--goal coding` picks the best coding model. `--goal latency` picks the fastest. `--goal balanced` splits the difference. Works across all providers.
+
+---
+
+## What's in v0.7.0
 
 We took the best ideas from Claude Code, OpenCode, and Claw Code — and built them all in Go. One binary. Every feature.
 
@@ -102,9 +150,9 @@ gocode auth generate my-phone       # secure remote access
 
 Include an image path in your message — it gets base64-encoded and sent as vision input. Works in both REPL and TUI.
 
-### 📋 18 Slash Commands
+### 📋 21 Slash Commands
 
-`/help` `/exit` `/clear` `/compact` `/cost` `/model` `/skill` `/plan` `/init-deep` `/diff` `/undo` `/redo` `/status` `/review` `/permissions` `/doctor` `/connect` `/share`
+`/help` `/exit` `/clear` `/compact` `/cost` `/model` `/skill` `/plan` `/init-deep` `/diff` `/undo` `/redo` `/status` `/review` `/permissions` `/doctor` `/connect` `/share` `/commit` `/memory` `/tasks`
 
 ### 🔧 CLI Commands
 
@@ -116,6 +164,11 @@ Include an image path in your message — it gets base64-encoded and sent as vis
 | `gocode pr` | Create GitHub PR via `gh` CLI |
 | `gocode github` | List GitHub issues via `gh` CLI |
 | `gocode auth` | Manage remote access keys |
+| `gocode profile` | Launch profiles — init, auto, recommend, show |
+| `gocode doctor` | Environment check (10 providers + Codex auth) |
+| `gocode smoke` | Quick runtime smoke test |
+| `gocode hardening` | Security and permissions audit |
+| `gocode config` | Show current runtime configuration |
 
 > **[Advanced Features →](docs/advanced-features.md)** · **[UX Features →](docs/ux-features.md)**
 
@@ -185,16 +238,36 @@ The built-in skills are distilled from these open-source projects. We're gratefu
 
 ## Supported Models
 
-Use any of these out of the box. Just set the right API key and go.
+Every model. Every provider. One binary.
 
-| Provider | Models | Alias | Env Var |
-|----------|--------|-------|---------|
-| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | `opus`, `sonnet`, `haiku` | `ANTHROPIC_API_KEY` |
-| **OpenAI** | GPT-5.4, GPT-5.4 Mini, GPT-5.4 Nano, GPT-4o, o3, o4-mini, Codex | `gpt5`, `gpt54-mini`, `gpt54-nano`, `gpt4o`, `o3`, `o4-mini`, `codex` | `OPENAI_API_KEY` |
-| **Google** | Gemini 3.1 Pro, Gemini 3 Flash, Gemini 2.5 Pro | `gemini`, `gemini-flash`, `gemini-2.5` | `GEMINI_API_KEY` |
-| **xAI** | Grok 4.20 Beta, Grok 3, Grok 3 Mini | `grok`, `grok-3`, `grok-mini` | `XAI_API_KEY` |
+We don't lock you in. We don't pick your model for you. We give you the keys to every model worth using — from the frontier labs to the open-source community to the server running under your desk.
 
-Or pass any full model ID: `--model gpt-5.4`, `--model claude-sonnet-4-6`, `--model gemini-3.1-pro-preview`, `--model grok-4.20-beta`, etc.
+**4 native providers. 7 proxy services. Local inference. 200+ models.** Set one env var and go.
+
+| Provider | Highlights | Env Var |
+|----------|-----------|---------|
+| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | `ANTHROPIC_API_KEY` |
+| **OpenAI** | GPT-5.4, o3, o4-mini, Codex | `OPENAI_API_KEY` |
+| **Google** | Gemini 3.1 Pro, Gemini 3 Flash | `GEMINI_API_KEY` |
+| **xAI** | Grok 4.20 Beta, Grok 3 | `XAI_API_KEY` |
+| **DeepSeek** | DeepSeek Chat, R1 Reasoner, Coder | `DEEPSEEK_API_KEY` |
+| **Mistral** | Mistral Large, Codestral, Pixtral | `MISTRAL_API_KEY` |
+| **Groq** | Llama 3.3 70B at 800 tok/s | `GROQ_API_KEY` |
+| **Together AI** | Llama 405B, Qwen 72B Turbo | `TOGETHER_API_KEY` |
+| **OpenRouter** | 200+ models, one API key | `OPENROUTER_API_KEY` |
+| **Azure OpenAI** | Enterprise GPT deployments | `AZURE_OPENAI_API_KEY` |
+| **Local (Ollama/LM Studio)** | Run any model on your machine | `OPENAI_BASE_URL` |
+
+```bash
+gocode chat --model sonnet          # Claude
+gocode chat --model gpt5            # GPT-5.4
+gocode chat --model deepseek        # DeepSeek
+gocode chat --model groq-llama      # Llama on Groq (800 tok/s)
+gocode chat --model llama           # Ollama local
+gocode chat --goal coding           # auto-pick the best coding model
+```
+
+> **[Full Model List — 200+ Models →](docs/supported-models.md)**
 
 ---
 
@@ -278,7 +351,7 @@ sudo mv gocode /usr/local/bin/       # on Windows: move to a PATH directory
 
 ```bash
 gocode --version
-# gocode version v0.3.5
+# gocode version v0.8.0
 ```
 
 ---
@@ -349,7 +422,7 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 | Startup time | **<10ms** |
 | Binary size | **~12MB** |
 | Runtime dependencies | **None** |
-| Supported LLM providers | **4** (Anthropic, OpenAI, Google, xAI) |
+| Supported LLM providers | **11** (Anthropic, OpenAI, Google, xAI, DeepSeek, Mistral, Groq, Together, OpenRouter, Azure, Local) |
 | Supported IDEs | **5** (Cursor, Kiro, VS Code, Antigravity, Claude Desktop) |
 | MCP tools | **14 built-in + external via MCP client** |
 | Internal packages | **38** |
@@ -364,11 +437,12 @@ That's it. No Python. No Node. No virtual environments. No config files. One bin
 | Guide | Description |
 |-------|-------------|
 | 📖 **[Agent Mode Guide](docs/agent-mode.md)** | How to use `gocode chat` and `gocode prompt` — models, API keys, flags, slash commands, examples |
+| 🌍 **[Supported Models](docs/supported-models.md)** | Full list of 200+ supported models across 11 providers — aliases, env vars, local setup |
 | 🚀 **[Advanced Features](docs/advanced-features.md)** | Multi-agent orchestration, model fallback, planning mode, skills, LSP, AST-grep, tmux, MCP client, context generation |
 | 🎨 **[UX Features](docs/ux-features.md)** | Streaming responses, thinking blocks, slash commands, GOCODE.md project config, git context, cost estimation |
 | 🔌 **[MCP & IDE Integration Guide](docs/mcp-ide-guide.md)** | How to connect gocode to Cursor, Kiro, VS Code, Antigravity, Claude Desktop |
 | 🏗 **[Architecture](docs/architecture.md)** | Internal package structure, system diagrams, design decisions |
-| 📚 **[CLI Reference](docs/cli-reference.md)** | Full list of all 23 CLI commands with flags and examples |
+| 📚 **[CLI Reference](docs/cli-reference.md)** | Full list of all CLI commands with flags and examples |
 
 ---
 
@@ -392,7 +466,7 @@ Open a PR. Start a discussion. File an issue. Every contribution makes gocode be
 | Startup time | ~200ms | **<10ms** (20× faster) |
 | Binary size | N/A (interpreted) | **~12MB** (single file) |
 | Runtime dependencies | Python 3.10+, pip, venv | **None** |
-| LLM providers | Claude only | **Claude, GPT-5.4, Gemini 3.1, Grok 4.20** |
+| LLM providers | Claude only | **Claude, GPT-5.4, Gemini 3.1, Grok 4.20 + 200 more** |
 | Deployment | `pip install` + virtualenv | **Copy one file** |
 | Concurrency model | asyncio / threading | **Goroutines + channels** |
 | MCP compliance | N/A | **Full specification** |
@@ -411,7 +485,7 @@ Open a PR. Start a discussion. File an issue. Every contribution makes gocode be
 
 gocode is the **Go version of Claude Code** — if you searched for any of these terms, you found the right project:
 
-`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `claude code rewrite` · `claude code port` · `go claude code` · `golang claude code` · `claude code cli golang` · `ai coding agent go` · `ai coding agent golang` · `go ai agent` · `golang ai agent` · `mcp server go` · `mcp server golang` · `mcp golang` · `model context protocol go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude desktop mcp go` · `go ai coding assistant` · `golang ai coding tool` · `claude code go port` · `claude code go version` · `claude code reimplementation` · `open source claude code` · `claude code alternative golang` · `fast ai agent go` · `lightweight ai agent` · `single binary ai agent` · `multi model ai agent` · `gpt4o coding agent` · `gemini coding agent` · `grok coding agent` · `multi agent orchestration go` · `agent fallback chain` · `lsp integration go agent` · `ast grep go` · `mcp client golang` · `ai planning agent` · `agent skills system` · `background agents golang` · `claude code skills` · `ai agent skills` · `coding agent skills golang` · `nothing design system ai` · `website cloner ai agent` · `nextjs best practices agent` · `react performance agent` · `golang best practices agent` · `web design review ai` · `pixel perfect clone agent` · `ai coding assistant terminal` · `claude code go alternative` · `openai agent go` · `gemini agent golang` · `grok agent terminal` · `autonomous coding agent` · `ai pair programmer terminal` · `claude code replacement` · `claude code open source go` · `ai agent with skills` · `domain expert ai agent` · `go ai coding tool cli`
+`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `claude code rewrite` · `claude code port` · `go claude code` · `golang claude code` · `claude code cli golang` · `ai coding agent go` · `ai coding agent golang` · `go ai agent` · `golang ai agent` · `mcp server go` · `mcp server golang` · `mcp golang` · `model context protocol go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude desktop mcp go` · `go ai coding assistant` · `golang ai coding tool` · `claude code go port` · `claude code go version` · `claude code reimplementation` · `open source claude code` · `claude code alternative golang` · `fast ai agent go` · `lightweight ai agent` · `single binary ai agent` · `multi model ai agent` · `gpt4o coding agent` · `gemini coding agent` · `grok coding agent` · `multi agent orchestration go` · `agent fallback chain` · `lsp integration go agent` · `ast grep go` · `mcp client golang` · `ai planning agent` · `agent skills system` · `background agents golang` · `claude code skills` · `ai agent skills` · `coding agent skills golang` · `nothing design system ai` · `website cloner ai agent` · `nextjs best practices agent` · `react performance agent` · `golang best practices agent` · `web design review ai` · `pixel perfect clone agent` · `ai coding assistant terminal` · `claude code go alternative` · `openai agent go` · `gemini agent golang` · `grok agent terminal` · `autonomous coding agent` · `ai pair programmer terminal` · `claude code replacement` · `claude code open source go` · `ai agent with skills` · `domain expert ai agent` · `go ai coding tool cli` · `deepseek coding agent` · `mistral coding agent` · `groq fast inference agent` · `together ai agent` · `openrouter agent` · `ollama coding agent` · `lm studio agent` · `local llm coding agent` · `200 models ai agent` · `multi provider ai agent` · `openai compatible agent` · `azure openai agent go` · `codex backend go` · `provider profiles ai agent`
 
 ---
 

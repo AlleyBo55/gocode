@@ -29,6 +29,9 @@ const (
 	CmdRedo
 	CmdConnect
 	CmdShare
+	CmdCommit
+	CmdMemory
+	CmdTasks
 )
 
 // ParseSlashCommand checks if input is a slash command.
@@ -41,6 +44,12 @@ func ParseSlashCommand(input string) SlashCommand {
 	}
 	if lower == "/model" || strings.HasPrefix(lower, "/model ") {
 		return CmdModel
+	}
+	if lower == "/memory" || strings.HasPrefix(lower, "/memory ") {
+		return CmdMemory
+	}
+	if lower == "/tasks" || strings.HasPrefix(lower, "/tasks ") {
+		return CmdTasks
 	}
 	if lower == "/help" || strings.HasPrefix(lower, "/help ") {
 		return CmdHelp
@@ -76,6 +85,8 @@ func ParseSlashCommand(input string) SlashCommand {
 		return CmdConnect
 	case "/share":
 		return CmdShare
+	case "/commit":
+		return CmdCommit
 	default:
 		return CmdNone
 	}

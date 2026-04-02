@@ -13,9 +13,12 @@ import (
 	"strings"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
+	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
+	"github.com/AlleyBo55/gocode/internal/memory"
 	"github.com/AlleyBo55/gocode/internal/skills"
+	"github.com/AlleyBo55/gocode/internal/tasks"
 )
 
 // REPLConfig holds configuration for the REPL display.
@@ -125,6 +128,9 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintln(r.writer, "  /doctor      Check environment")
 			fmt.Fprintln(r.writer, "  /connect     Show API key setup guide")
 			fmt.Fprintln(r.writer, "  /share       Export session / create gist")
+			fmt.Fprintln(r.writer, "  /commit      Auto-commit changes with generated message")
+			fmt.Fprintln(r.writer, "  /memory      Manage persistent memories")
+			fmt.Fprintln(r.writer, "  /tasks       Manage task list")
 			continue
 		case CmdModel:
 			r.handleModelCommand(input)
@@ -190,6 +196,32 @@ func (r *REPL) Run(ctx context.Context) error {
 			}
 			fmt.Fprintf(r.writer, "Session exported to: %s\n", tmpFile)
 			continue
+		case CmdCommit:
+			stat, _ := exec.Command("git", "diff", "--stat").Output()
+			if strings.TrimSpace(string(stat)) == "" {
+				fmt.Fprintln(r.writer, "No changes to commit.")
+				continue
+			}
+			exec.Command("git", "add", "-A").Run()
+			msg := "gocode: auto-commit"
+			if lines := strings.Split(strings.TrimSpace(string(stat)), "\n"); len(lines) > 0 {
+				last := strings.TrimSpace(lines[len(lines)-1])
+				msg = "gocode: " + last
+			}
+			msg += "\n\nCo-Authored-By: gocode <gocode@agent>"
+			out, commitErr := exec.Command("git", "commit", "-m", msg).CombinedOutput()
+			if commitErr != nil {
+				fmt.Fprintf(r.writer, "Commit error: %v\n%s\n", commitErr, string(out))
+			} else {
+				fmt.Fprintln(r.writer, strings.TrimSpace(string(out)))
+			}
+			continue
+		case CmdMemory:
+			r.handleMemoryCommand(input)
+			continue
+		case CmdTasks:
+			r.handleTasksCommand(input)
+			continue
 		case CmdStatus:
 			cwd, _ := os.Getwd()
 			usage := r.runtime.GetUsage()
@@ -236,6 +268,15 @@ func (r *REPL) Run(ctx context.Context) error {
 					fmt.Fprintf(r.writer, "  ✓ %s: set\n", env)
 				} else {
 					fmt.Fprintf(r.writer, "  - %s: not set\n", env)
+				}
+			}
+			// Check OPENAI_BASE_URL connectivity
+			if baseURL := os.Getenv("OPENAI_BASE_URL"); baseURL != "" {
+				fmt.Fprintf(r.writer, "  ℹ OPENAI_BASE_URL: %s\n", baseURL)
+				if _, _, err := apiclient.ResolveProvider(r.config.Model, ""); err == nil {
+					fmt.Fprintf(r.writer, "  ✓ Provider resolved for model %s\n", r.config.Model)
+				} else {
+					fmt.Fprintf(r.writer, "  ✗ Provider error: %v\n", err)
 				}
 			}
 			for _, name := range []string{"GOCODE.md", "CLAUDE.md"} {
@@ -417,6 +458,77 @@ func (r *REPL) handleDiffCommand() {
 		return
 	}
 	fmt.Fprintln(r.writer, diff)
+}
+
+// handleMemoryCommand processes the /memory slash command.
+func (r *REPL) handleMemoryCommand(input string) {
+	store := memory.NewStore(filepath.Join(".gocode", "memory.json"))
+	_ = store.Load()
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/memory"))
+	if arg == "" {
+		mems := store.All()
+		if len(mems) == 0 {
+			fmt.Fprintln(r.writer, "No memories stored.")
+			return
+		}
+		for _, m := range mems {
+			fmt.Fprintf(r.writer, "  %s: %s\n", m.Key, m.Value)
+		}
+		return
+	}
+	if strings.HasPrefix(arg, "set ") {
+		parts := strings.SplitN(strings.TrimPrefix(arg, "set "), " ", 2)
+		if len(parts) < 2 {
+			fmt.Fprintln(r.writer, "Usage: /memory set <key> <value>")
+			return
+		}
+		store.Set(parts[0], parts[1])
+		_ = store.Save()
+		fmt.Fprintf(r.writer, "Memory set: %s = %s\n", parts[0], parts[1])
+		return
+	}
+	if strings.HasPrefix(arg, "delete ") {
+		key := strings.TrimSpace(strings.TrimPrefix(arg, "delete "))
+		store.Delete(key)
+		_ = store.Save()
+		fmt.Fprintf(r.writer, "Memory deleted: %s\n", key)
+		return
+	}
+	fmt.Fprintln(r.writer, "Usage: /memory [set <key> <value> | delete <key>]")
+}
+
+// handleTasksCommand processes the /tasks slash command.
+func (r *REPL) handleTasksCommand(input string) {
+	store := tasks.NewStore(filepath.Join(".gocode", "tasks.json"))
+	_ = store.Load()
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/tasks"))
+	if arg == "" {
+		fmt.Fprint(r.writer, store.Render())
+		return
+	}
+	if strings.HasPrefix(arg, "add ") {
+		text := strings.TrimSpace(strings.TrimPrefix(arg, "add "))
+		t := store.Add(text)
+		_ = store.Save()
+		fmt.Fprintf(r.writer, "Added task #%d: %s\n", t.ID, t.Text)
+		return
+	}
+	if strings.HasPrefix(arg, "done ") {
+		idStr := strings.TrimSpace(strings.TrimPrefix(arg, "done "))
+		var id int
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			fmt.Fprintln(r.writer, "Usage: /tasks done <id>")
+			return
+		}
+		if err := store.Complete(id); err != nil {
+			fmt.Fprintf(r.writer, "Error: %v\n", err)
+			return
+		}
+		_ = store.Save()
+		fmt.Fprintf(r.writer, "Task #%d marked complete.\n", id)
+		return
+	}
+	fmt.Fprintln(r.writer, "Usage: /tasks [add <text> | done <id>]")
 }
 
 // TerminalToolCallback updates the terminal during tool execution.
@@ -630,6 +742,13 @@ When making code changes:
 				break
 			}
 		}
+	}
+
+	// Inject persistent memories
+	memStore := memory.NewStore(filepath.Join(".gocode", "memory.json"))
+	_ = memStore.Load()
+	if mems := memStore.Render(); mems != "" {
+		sb.WriteString("\n\n# Persistent Memory\n\n" + mems)
 	}
 
 	return sb.String()

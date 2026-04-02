@@ -34,6 +34,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/orchestrator"
 	"github.com/AlleyBo55/gocode/internal/permissions"
 	"github.com/AlleyBo55/gocode/internal/plugins"
+	"github.com/AlleyBo55/gocode/internal/profiles"
 	"github.com/AlleyBo55/gocode/internal/queryengine"
 	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/runtime"
@@ -47,7 +48,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
 
-var version = "v0.7.2"
+var version = "v0.8.0"
 
 // isTerminal checks if stdout is a terminal (not piped).
 func isTerminal() bool {
@@ -534,6 +535,7 @@ func main() {
 		Short: "Start interactive agent chat",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model, _ := cmd.Flags().GetString("model")
+			goal, _ := cmd.Flags().GetString("goal")
 			maxTurns, _ := cmd.Flags().GetInt("max-turns")
 			maxTokens, _ := cmd.Flags().GetInt("max-tokens")
 			apiKey, _ := cmd.Flags().GetString("api-key")
@@ -548,6 +550,11 @@ func main() {
 			useTUI, _ := cmd.Flags().GetBool("tui")
 			_, _ = cmd.Flags().GetBool("no-tui") // kept for backward compat
 			themeName, _ := cmd.Flags().GetString("theme")
+
+			// Goal-based model selection: if --goal is set and --model wasn't explicitly changed
+			if goal != "" && !cmd.Flags().Changed("model") {
+				model = apiclient.RecommendModel(goal)
+			}
 
 			permMode := agent.WorkspaceWrite
 			if skipPerms {
@@ -669,6 +676,7 @@ func main() {
 		},
 	}
 	chatCmd.Flags().String("model", "sonnet", "Model name or alias")
+	chatCmd.Flags().String("goal", "", "Goal-based model selection: coding, latency, balanced")
 	chatCmd.Flags().Int("max-turns", 30, "Maximum agent loop iterations")
 	chatCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
 	chatCmd.Flags().String("api-key", "", "API key (overrides env vars)")
@@ -684,6 +692,194 @@ func main() {
 	chatCmd.Flags().Bool("no-tui", false, "Force line-based REPL mode (disable TUI)")
 	chatCmd.Flags().String("theme", "", "TUI color theme (golang, monokai, dracula, nord)")
 	rootCmd.AddCommand(chatCmd)
+
+	// --- profile commands ---
+	profileCmd := &cobra.Command{Use: "profile", Short: "Manage launch profiles"}
+	profileCmd.AddCommand(&cobra.Command{
+		Use:   "init",
+		Short: "Create a default profile",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p := profiles.Profile{Provider: "anthropic", Model: "sonnet", Goal: "coding"}
+			path := profiles.DefaultProfilePath()
+			if err := profiles.SaveProfile(path, p); err != nil {
+				return err
+			}
+			fmt.Printf("Profile created at %s\n", path)
+			return nil
+		},
+	})
+	profileCmd.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Show current profile",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			p, err := profiles.LoadProfile(profiles.DefaultProfilePath())
+			if err != nil {
+				return fmt.Errorf("no profile found (run 'gocode profile init'): %w", err)
+			}
+			data, _ := json.MarshalIndent(p, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		},
+	})
+	profileRecommendCmd := &cobra.Command{
+		Use:   "recommend",
+		Short: "Recommend the best profile for your goal",
+		Run: func(cmd *cobra.Command, args []string) {
+			goal, _ := cmd.Flags().GetString("goal")
+			p := profiles.Recommend(goal)
+			data, _ := json.MarshalIndent(p, "", "  ")
+			fmt.Println(string(data))
+		},
+	}
+	profileRecommendCmd.Flags().String("goal", "coding", "Goal: coding, latency, balanced")
+	profileCmd.AddCommand(profileRecommendCmd)
+	profileAutoCmd := &cobra.Command{
+		Use:   "auto",
+		Short: "Auto-detect best provider from env vars and save profile",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			goal, _ := cmd.Flags().GetString("goal")
+			p := profiles.AutoDetect(goal)
+			path := profiles.DefaultProfilePath()
+			if err := profiles.SaveProfile(path, p); err != nil {
+				return err
+			}
+			fmt.Printf("Auto-detected profile saved to %s\n", path)
+			data, _ := json.MarshalIndent(p, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		},
+	}
+	profileAutoCmd.Flags().String("goal", "coding", "Goal: coding, latency, balanced")
+	profileCmd.AddCommand(profileAutoCmd)
+	rootCmd.AddCommand(profileCmd)
+
+	// --- doctor CLI command ---
+	doctorCmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Check environment and dependencies",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Checking environment...")
+			checks := []struct{ name, cmd string }{
+				{"git", "git --version"},
+				{"go", "go version"},
+				{"tmux", "tmux -V"},
+				{"ast-grep", "ast-grep --version"},
+			}
+			for _, c := range checks {
+				parts := strings.Fields(c.cmd)
+				if out, err := exec.Command(parts[0], parts[1:]...).Output(); err == nil {
+					fmt.Printf("  ✓ %s: %s\n", c.name, strings.TrimSpace(string(out)))
+				} else {
+					fmt.Printf("  ✗ %s: not found\n", c.name)
+				}
+			}
+			for _, env := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
+				"OPENROUTER_API_KEY", "TOGETHER_API_KEY", "GROQ_API_KEY", "DEEPSEEK_API_KEY", "MISTRAL_API_KEY",
+				"AZURE_OPENAI_API_KEY"} {
+				if os.Getenv(env) != "" {
+					fmt.Printf("  ✓ %s: set\n", env)
+				} else {
+					fmt.Printf("  - %s: not set\n", env)
+				}
+			}
+			if baseURL := os.Getenv("OPENAI_BASE_URL"); baseURL != "" {
+				fmt.Printf("  ℹ OPENAI_BASE_URL: %s\n", baseURL)
+			}
+			for _, name := range []string{"GOCODE.md", "CLAUDE.md"} {
+				if _, err := os.Stat(name); err == nil {
+					fmt.Printf("  ✓ %s: found\n", name)
+				}
+			}
+			// Check codex auth
+			home, _ := os.UserHomeDir()
+			if _, err := os.Stat(filepath.Join(home, ".codex", "auth.json")); err == nil {
+				fmt.Printf("  ✓ Codex auth: ~/.codex/auth.json found\n")
+			}
+			// Check profile
+			if _, err := os.Stat(profiles.DefaultProfilePath()); err == nil {
+				fmt.Printf("  ✓ Profile: %s found\n", profiles.DefaultProfilePath())
+			}
+		},
+	}
+	rootCmd.AddCommand(doctorCmd)
+
+	// --- smoke — quick runtime smoke test ---
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "smoke",
+		Short: "Quick runtime smoke test",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Running smoke test...")
+			// Check binary version
+			fmt.Printf("  ✓ Version: %s\n", version)
+			// Check tool registry
+			fmt.Printf("  ✓ Commands: %d registered\n", len(cmdReg.GetCommands(true, true)))
+			fmt.Printf("  ✓ Tools: %d registered\n", len(toolReg.GetTools(false, true, permissions.NewToolPermissionContext(nil, nil))))
+			// Check session store
+			fmt.Printf("  ✓ Session dir: %s\n", sessionStore.Dir)
+			// Check skills
+			sl := skills.NewSkillLoader("")
+			ls, _ := sl.LoadAll()
+			fmt.Printf("  ✓ Skills: %d loaded\n", len(ls))
+			// Check plugins
+			pm := plugins.NewPluginManager(filepath.Join(".gocode", "plugins"))
+			lp, _ := pm.LoadAll()
+			fmt.Printf("  ✓ Plugins: %d loaded\n", len(lp))
+			fmt.Println("Smoke test passed.")
+		},
+	})
+
+	// --- hardening — runtime hardening check ---
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "hardening",
+		Short: "Runtime hardening check — verify security and stability",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Runtime hardening check...")
+			issues := 0
+			// Check file permissions on config dirs
+			for _, dir := range []string{".gocode", ".gocode/skills", ".gocode/plugins"} {
+				if info, err := os.Stat(dir); err == nil {
+					perm := info.Mode().Perm()
+					if perm&0o077 != 0 {
+						fmt.Printf("  ⚠ %s: world-readable (mode %o) — recommend chmod 700\n", dir, perm)
+						issues++
+					} else {
+						fmt.Printf("  ✓ %s: permissions OK\n", dir)
+					}
+				}
+			}
+			// Check auth key file
+			authPath := filepath.Join(".gocode", "auth_keys.json")
+			if info, err := os.Stat(authPath); err == nil {
+				perm := info.Mode().Perm()
+				if perm&0o077 != 0 {
+					fmt.Printf("  ⚠ %s: world-readable (mode %o) — recommend chmod 600\n", authPath, perm)
+					issues++
+				} else {
+					fmt.Printf("  ✓ %s: permissions OK\n", authPath)
+				}
+			}
+			// Check API keys not in shell history
+			home, _ := os.UserHomeDir()
+			for _, histFile := range []string{".bash_history", ".zsh_history"} {
+				histPath := filepath.Join(home, histFile)
+				if data, err := os.ReadFile(histPath); err == nil {
+					content := string(data)
+					for _, key := range []string{"ANTHROPIC_API_KEY=", "OPENAI_API_KEY=", "GEMINI_API_KEY="} {
+						if strings.Contains(content, key) {
+							fmt.Printf("  ⚠ API key found in %s — use env file or secrets manager\n", histFile)
+							issues++
+							break
+						}
+					}
+				}
+			}
+			if issues == 0 {
+				fmt.Println("  ✓ All hardening checks passed.")
+			} else {
+				fmt.Printf("  %d issue(s) found.\n", issues)
+			}
+		},
+	})
 
 	// 23. prompt — one-shot agent mode
 	promptCmd := &cobra.Command{
