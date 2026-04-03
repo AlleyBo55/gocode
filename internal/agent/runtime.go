@@ -277,6 +277,21 @@ func (r *ConversationRuntime) executeTool(tu toolUseInfo) apitypes.ToolResult {
 		return ToolResultFromHookDenial(tu.id, tu.name, preResult)
 	}
 
+	// Hook requested user confirmation
+	if preResult.Escalate {
+		escalateInput, _ := json.Marshal(inputMap)
+		allowed, reason := r.permPolicy.Authorize(tu.name, string(escalateInput))
+		if !allowed {
+			r.toolCb.OnToolEnd(tu.name, false)
+			return apitypes.ToolResult{ToolUseID: tu.id, Output: reason, IsError: true}
+		}
+	}
+
+	// Apply updated input from hook
+	if preResult.UpdatedInput != nil {
+		inputMap = preResult.UpdatedInput
+	}
+
 	// Execute
 	result := r.executor.Execute(tu.name, inputMap)
 	r.toolCb.OnToolEnd(tu.name, !result.IsError)
@@ -376,6 +391,9 @@ func (r *ConversationRuntime) GetUsage() UsageTracker { return r.usage }
 
 // GetToolCb returns the tool callback for external wiring (e.g., spinner integration).
 func (r *ConversationRuntime) GetToolCb() ToolCallback { return r.toolCb }
+
+// SetToolCb replaces the tool callback (e.g., for structured output collection).
+func (r *ConversationRuntime) SetToolCb(cb ToolCallback) { r.toolCb = cb }
 
 // GetSession returns the current conversation session.
 func (r *ConversationRuntime) GetSession() []apitypes.InputMessage { return r.session }

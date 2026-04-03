@@ -32,6 +32,11 @@ const (
 	CmdCommit
 	CmdMemory
 	CmdTasks
+	CmdWorktree
+	CmdVoice
+	CmdUltraPlan
+	CmdVim
+	CmdOutputStyle
 )
 
 // ParseSlashCommand checks if input is a slash command.
@@ -51,8 +56,26 @@ func ParseSlashCommand(input string) SlashCommand {
 	if lower == "/tasks" || strings.HasPrefix(lower, "/tasks ") {
 		return CmdTasks
 	}
+	if lower == "/worktree" || strings.HasPrefix(lower, "/worktree ") {
+		return CmdWorktree
+	}
+	if lower == "/voice" {
+		return CmdVoice
+	}
+	if lower == "/vim" {
+		return CmdVim
+	}
+	if lower == "/ultraplan" || strings.HasPrefix(lower, "/ultraplan ") {
+		return CmdUltraPlan
+	}
+	if lower == "/output-style" || strings.HasPrefix(lower, "/output-style ") {
+		return CmdOutputStyle
+	}
 	if lower == "/help" || strings.HasPrefix(lower, "/help ") {
 		return CmdHelp
+	}
+	if lower == "/undo" || strings.HasPrefix(lower, "/undo ") {
+		return CmdUndo
 	}
 	switch lower {
 	case "/exit":
@@ -69,8 +92,6 @@ func ParseSlashCommand(input string) SlashCommand {
 		return CmdCompact
 	case "/diff":
 		return CmdDiff
-	case "/undo":
-		return CmdUndo
 	case "/redo":
 		return CmdRedo
 	case "/status":

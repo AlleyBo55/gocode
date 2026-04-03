@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"time"
 )
 
 // ErrSessionNotFound is returned when a session file does not exist.
@@ -19,10 +22,19 @@ type Message struct {
 
 // StoredSession represents a persisted session.
 type StoredSession struct {
-	SessionID    string   `json:"session_id"`
+	SessionID    string    `json:"session_id"`
+	WorkingDir   string    `json:"working_dir,omitempty"`
 	Messages     []Message `json:"messages"`
-	InputTokens  int      `json:"input_tokens"`
-	OutputTokens int      `json:"output_tokens"`
+	InputTokens  int       `json:"input_tokens"`
+	OutputTokens int       `json:"output_tokens"`
+}
+
+// SessionMeta holds metadata for session listing.
+type SessionMeta struct {
+	SessionID  string    `json:"session_id"`
+	WorkingDir string    `json:"working_dir"`
+	ModTime    time.Time `json:"mod_time"`
+	Summary    string    `json:"summary,omitempty"`
 }
 
 // SessionPersistence defines the interface for session storage operations.
@@ -102,4 +114,76 @@ func (s *SessionStore) Load(sessionID string) (StoredSession, error) {
 	}
 
 	return session, nil
+}
+
+// ListSessions returns metadata for all saved sessions, sorted by mod time descending.
+func (s *SessionStore) ListSessions() ([]SessionMeta, error) {
+	entries, err := os.ReadDir(s.Dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading session directory: %w", err)
+	}
+
+	var metas []SessionMeta
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+
+		sessionID := strings.TrimSuffix(e.Name(), ".json")
+		data, err := os.ReadFile(filepath.Join(s.Dir, e.Name()))
+		if err != nil {
+			continue
+		}
+
+		var stored StoredSession
+		if err := json.Unmarshal(data, &stored); err != nil {
+			continue
+		}
+
+		summary := ""
+		if len(stored.Messages) > 0 {
+			first := stored.Messages[0].Content
+			if len(first) > 80 {
+				first = first[:80] + "..."
+			}
+			summary = first
+		}
+
+		metas = append(metas, SessionMeta{
+			SessionID:  sessionID,
+			WorkingDir: stored.WorkingDir,
+			ModTime:    info.ModTime(),
+			Summary:    summary,
+		})
+	}
+
+	sort.Slice(metas, func(i, j int) bool {
+		return metas[i].ModTime.After(metas[j].ModTime)
+	})
+
+	return metas, nil
+}
+
+// FindMostRecent returns the most recently modified session for the given working directory.
+func (s *SessionStore) FindMostRecent(cwd string) (StoredSession, error) {
+	metas, err := s.ListSessions()
+	if err != nil {
+		return StoredSession{}, err
+	}
+
+	for _, m := range metas {
+		if m.WorkingDir == cwd {
+			return s.Load(m.SessionID)
+		}
+	}
+
+	return StoredSession{}, fmt.Errorf("no session found for directory %s: %w", cwd, ErrSessionNotFound)
 }

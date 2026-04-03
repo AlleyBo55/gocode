@@ -233,4 +233,84 @@ Skips `node_modules`, `vendor`, `.git`, `dist`, and `.gitignore`'d paths. Never 
 
 ---
 
+## Phase 4 — System Features (Wave 2)
+
+Eighteen new features that extend gocode from a coding agent into a self-managing, IDE-integrated agent operating system.
+
+### ULTRAPLAN — Deep Planning
+
+Delegates complex architectural planning to a background agent running a more capable model (Opus) with a 30-minute timeout. Your interactive session stays unblocked while the planner works. Invoke with `/ultraplan <task>` or `/plan --deep`.
+
+### Dream System — Autonomous Memory Consolidation
+
+A background process that consolidates and prunes agent memory during idle periods and at session end. Runs a four-phase cycle: orient (read current memory), gather (scan conversation for signals), consolidate (merge into durable files), prune (remove stale entries below relevance threshold).
+
+### Vim Keybindings
+
+Full vim-mode editing in the REPL input. Supports normal, insert, and visual modes with hjkl navigation, w/b/e word motions, d/c/y operators, text objects (iw, aw, i", a"), and `/vim` toggle command. State machine handles mode transitions and count prefixes.
+
+### Cron/Scheduled Tasks
+
+Five-field cron expression parser with a background scheduler. Create recurring tasks that spawn background agents at specified intervals. Schedules persist to `.gocode/cron.json` and survive restarts. Manage with the `ScheduleCronTool` or `/cron` slash commands.
+
+### Bridge/IDE Integration
+
+WebSocket server for bidirectional communication between gocode and IDEs. Supports session management, permission forwarding, and real-time response streaming. Start with `gocode bridge --port <port>`. Handles multiple concurrent IDE connections with independent sessions.
+
+### Swarm Coordination
+
+Agent-to-agent messaging and discovery for multi-agent workflows. Each agent gets a mailbox for inter-agent communication. The `SendMessageTool` lets agents coordinate on shared tasks. The orchestrator maintains a discovery registry with agent capabilities and status.
+
+### PDF Handling
+
+Read and extract text from PDF files up to 50 MB. Integrated into the file read tool — `.pdf` files are automatically detected and processed. Returns text with page separators. Uses pure Go parsing with no CGo dependencies.
+
+### Output Styles
+
+Switch between output formatting modes: concise, verbose, markdown, and minimal. Set via `--output-style` CLI flag or `/output-style` slash command. User-defined styles can be added in `.gocode/output-styles/`. Styles modify the system prompt and display rendering.
+
+### Migrations System
+
+Automatic config and data format upgrades on startup. The migration runner detects the current data version, executes pending migrations sequentially, and creates backups before any changes. Failed migrations roll back automatically.
+
+### Buddy System — Terminal Companion
+
+A terminal Tamagotchi companion assigned deterministically via Mulberry32 PRNG seeded from your user ID. 18 species across 5 rarity tiers (Common, Uncommon, Rare, Epic, Legendary). Tracks DEBUGGING, CHAOS, and SNARK stats. Displays ASCII sprites in the REPL banner.
+
+### New Skills (Wave 2)
+
+Eight new bundled skills extend the agent's specialist capabilities:
+
+| Skill | What It Does |
+|-------|-------------|
+| `loop` | Autonomous execution — keeps working until the task is done |
+| `stuck` | Recovery mode — structured steps to escape confused or frozen states |
+| `debug` | Structured debugging — reproduce, isolate, fix, verify |
+| `verify` | Work verification — re-reads files, runs tests, validates against requirements |
+| `simplify` | Complexity reduction — dead code removal, logic flattening, dependency cleanup |
+| `remember` | Memory management — actively saves facts and preferences to memdir |
+| `skillify` | Meta-skill — analyzes conversation patterns and generates reusable skill JSON |
+| `batch` | Batch processing — parallel work across multiple files or worktree agents |
+
+## New CLI Flags (Wave 2)
+
+| Flag | Command | Default | Description |
+|------|---------|---------|-------------|
+| `--output-style` | `chat`, `prompt` | `markdown` | Set output formatting style (concise, verbose, markdown, minimal) |
+| `--bridge` | `chat` | `false` | Start WebSocket bridge server alongside REPL |
+| `--vim` | `chat` | `false` | Enable vim keybindings in REPL input |
+
+## New Slash Commands (Wave 2)
+
+| Command | What It Does |
+|---------|-------------|
+| `/ultraplan <task>` | Deep planning with strongest model (background, 30min timeout) |
+| `/vim` | Toggle vim keybindings on/off |
+| `/output-style [style]` | Switch output style or show current style |
+| `/cron list` | List active scheduled tasks |
+| `/cron remove <id>` | Remove a scheduled task |
+| `/buddy` | Display your terminal companion's sprite and stats |
+
+---
+
 [← Back to README](../README.md)

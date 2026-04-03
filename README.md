@@ -44,6 +44,14 @@ gocode starts in under 10 milliseconds. Ships as a single 12MB binary. Works wit
 
 ## What's New
 
+### v0.9.0 — One More Thing.
+
+We thought we were done. We weren't even close.
+
+Eighteen new capabilities. Eight new skills that make the agent think differently. A dream system that consolidates memory while you sleep. A planning engine that delegates to the strongest model in the room and comes back with a blueprint. Vim keybindings — because some of you asked, and we listened. A cron scheduler that runs tasks on your behalf when you're not looking. A swarm of agents that talk to each other. A WebSocket bridge that connects gocode to any IDE. PDF reading. Output styles. A buddy system — because even an AI agent deserves a companion.
+
+This isn't an update. This is gocode becoming self-aware.
+
 ### v0.8.0 — Every Model. Every Provider. One Binary.
 
 We ripped out the four-provider ceiling and replaced it with a universal model layer. 200+ models. 11 providers. Local inference. Persistent memory. Task management. Runtime hardening. The agent can search the web, delegate to specialists, and remember what you told it last week.
@@ -114,7 +122,7 @@ gocode chat --skill nothing-design           # designs like Teenage Engineering
 gocode chat --skill clone-website            # reverse-engineers websites
 ```
 
-### 8 Built-in Skills
+### 16 Built-in Skills
 
 | Skill | What It Does |
 |-------|-------------|
@@ -126,6 +134,14 @@ gocode chat --skill clone-website            # reverse-engineers websites
 | `nextjs-best-practices` | Next.js 15+ patterns — RSC, async APIs, data fetching |
 | `react-best-practices` | React performance — eliminate waterfalls, bundle size, re-renders |
 | `web-design-guidelines` | Accessibility audit, responsive design, WCAG compliance |
+| `loop` | Autonomous keep-going mode — works until the task is done |
+| `stuck` | Recovery mode for confused or frozen agent sessions |
+| `debug` | Structured troubleshooting — reproduce, isolate, fix, verify |
+| `verify` | Double-check work by re-reading files, running tests, validating |
+| `simplify` | Code review for complexity reduction and dead code removal |
+| `remember` | Active memory management — save facts and preferences to memdir |
+| `skillify` | Meta-skill — capture conversation patterns as reusable skill JSON |
+| `batch` | Parallel batch processing across multiple files or worktree agents |
 
 Create your own — drop a JSON file in `.gocode/skills/`.
 
@@ -225,6 +241,59 @@ No Python. No Node. No virtual environments. One binary, one env var, go.
 
 ---
 
+## The Numbers
+
+| Metric | Claude Code (Node.js) | gocode (Go) |
+|--------|----------------------|-------------|
+| Startup time | ~200ms | **<10ms** (20× faster) |
+| Binary size | ~180MB (node_modules) | **~12MB** (single file) |
+| Runtime dependencies | Node.js 18+, npm | **None** |
+| LLM providers | Claude only | **200+ models, 11 providers** |
+| Deployment | `npm install -g` | **Copy one file** |
+| Concurrency | Node.js async/await | **Goroutines + channels** |
+| MCP support | Yes (client + server) | **Yes (client + server)** |
+| IDE integrations | VS Code, JetBrains, Web, Desktop | **5 IDEs via MCP** |
+| Multi-agent / subagents | Yes (AgentTool, TaskTools) | **Yes (4 profiles, 5 concurrent)** |
+| Model fallback | No | **Yes (automatic failover)** |
+| Skills system | Yes (bundled + custom) | **Yes (16 built-in + custom)** |
+| Custom slash commands | Yes (markdown files) | **Yes (markdown files, YAML frontmatter)** |
+| Hooks (lifecycle) | Yes (shell scripts, JSON output) | **Yes (shell scripts, JSON output, PreToolUse/PostToolUse)** |
+| Web search | Yes (WebSearchTool, WebFetchTool) | **Yes (built-in, no API key)** |
+| Persistent memory | Yes (memdir, team sync, aging) | **Yes (memdir, 3 scopes, aging, team sync)** |
+| Git checkpoints / rewind | Yes (/rewind) | **Yes (/undo N, per-session refs)** |
+| Git worktree tools | Yes (EnterWorktreeTool) | **Yes (Enter/Exit tools, /worktree commands)** |
+| Voice input | Yes (/voice, STT) | Partial (/voice toggle, STT interface ready) |
+| Task management tools | Yes (6 task tools) | **Yes (6 task tools, background agents)** |
+| Notebook editing | Yes (NotebookEditTool) | **Yes (cell-level edit/add/remove/reorder)** |
+| GitHub Actions | Yes (claude-code-action) | **Yes (gocode-action, PR review, issue impl)** |
+| Structured output / SDK | Yes (Agent SDK) | **Yes (--output-format json, --output-schema)** |
+| Session continue (-c) | Yes | **Yes (-c / -r flags, directory-scoped)** |
+| Vim keybindings | Yes (/vim) | **Yes (/vim toggle, full normal/insert/visual modes)** |
+| ULTRAPLAN deep planning | Yes | **Yes (/ultraplan, background Opus agent, 30min timeout)** |
+| Dream system (memory consolidation) | Yes | **Yes (orient→gather→consolidate→prune cycle)** |
+| Cron/scheduled tasks | Yes | **Yes (5-field cron, background agent execution)** |
+| Bridge/IDE integration | Yes | **Yes (WebSocket server, bidirectional IDE comms)** |
+| Swarm coordination | Yes | **Yes (agent-to-agent messaging, discovery registry)** |
+| PDF handling | Yes | **Yes (text extraction, page separators, 50MB limit)** |
+| Output styles | Yes | **Yes (concise, verbose, markdown, minimal)** |
+| Migrations system | Yes | **Yes (auto-upgrade config/data on startup)** |
+| Buddy system (companion) | Yes | **Yes (18 species, 5 rarities, deterministic gacha)** |
+| Loop skill | Yes | **Yes (autonomous keep-going mode)** |
+| Stuck skill | Yes | **Yes (structured recovery from confused state)** |
+| Debug skill | Yes | **Yes (structured troubleshooting methodology)** |
+| Verify skill | Yes | **Yes (double-check work against requirements)** |
+| Simplify skill | Yes | **Yes (3-agent parallel code review)** |
+| Remember skill | Yes | **Yes (active memory persistence across sessions)** |
+| Skillify skill | Yes | **Yes (meta-skill: capture workflow as reusable skill)** |
+| Batch skill | Yes | **Yes (parallel work across worktree agents)** |
+| Multi-model support | No (Claude only) | **Yes (200+ models, 11 providers)** |
+| Category-based routing | No | **Yes (deep/quick/visual/ultrabrain)** |
+| Hash-anchored file I/O | No | **Yes (CRC32 line hashes)** |
+| AST-grep integration | No | **Yes (structural code search)** |
+| Tmux sessions | No | **Yes (persistent terminal sessions)** |
+| TUI mode | No (Ink-based terminal UI) | **Yes (bubbletea split panels, themes)** |
+
+---
 
 ## Documentation
 

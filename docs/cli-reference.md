@@ -17,11 +17,14 @@ All 23 gocode commands.
 
 ```
 Flags:
-  --model string      Model name or alias (default "sonnet")
-  --max-turns int     Max agent loop iterations (default 30)
-  --max-tokens int    Max output tokens per request (default 8192)
-  --api-key string    API key override
-  --resume string     Resume a saved session by ID
+  --model string          Model name or alias (default "sonnet")
+  --max-turns int         Max agent loop iterations (default 30)
+  --max-tokens int        Max output tokens per request (default 8192)
+  --api-key string        API key override
+  --resume string         Resume a saved session by ID
+  --output-style string   Output style: concise, verbose, markdown, minimal (default "markdown")
+  --vim                   Enable vim keybindings in REPL input
+  --bridge                Start WebSocket bridge server alongside REPL
 ```
 
 ### `gocode prompt`
@@ -48,6 +51,21 @@ Flags:
   --transport string   Transport type: stdio or http (default "stdio")
   --addr string        HTTP listen address (default ":8080")
 ```
+
+---
+
+## Bridge Server
+
+| Command | Description |
+|---------|-------------|
+| `bridge` | Start WebSocket bridge server for IDE integration |
+
+```
+Flags:
+  --port int   WebSocket server port (default 19836)
+```
+
+Establishes a bidirectional WebSocket connection between gocode and IDEs (VS Code, JetBrains). Supports session management, permission forwarding, and real-time response streaming.
 
 ---
 
@@ -103,6 +121,19 @@ Flags:
 | Command | Description |
 |---------|-------------|
 | `parity-audit` | Run parity audit |
+
+---
+
+## Slash Commands (Wave 2)
+
+| Command | Description |
+|---------|-------------|
+| `/ultraplan <task>` | Deep planning with strongest model (background Opus agent, 30min timeout) |
+| `/vim` | Toggle vim keybindings on/off |
+| `/output-style [style]` | Switch output style (concise, verbose, markdown, minimal) or show current |
+| `/cron list` | List active scheduled tasks with next execution time |
+| `/cron remove <id>` | Remove a scheduled task |
+| `/buddy` | Display terminal companion sprite and stats |
 
 ---
 

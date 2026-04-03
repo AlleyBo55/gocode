@@ -9,7 +9,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,17 +21,23 @@ import (
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apiserver"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
+	"github.com/AlleyBo55/gocode/internal/bridge"
+	"github.com/AlleyBo55/gocode/internal/buddy"
+	"github.com/AlleyBo55/gocode/internal/apitypes"
 	"github.com/AlleyBo55/gocode/internal/astgrep"
 	"github.com/AlleyBo55/gocode/internal/authkeys"
 	"github.com/AlleyBo55/gocode/internal/bootstrap"
 	"github.com/AlleyBo55/gocode/internal/commandgraph"
 	"github.com/AlleyBo55/gocode/internal/commands"
+	"github.com/AlleyBo55/gocode/internal/cron"
 	"github.com/AlleyBo55/gocode/internal/editorcompat"
 	"github.com/AlleyBo55/gocode/internal/execution"
 	"github.com/AlleyBo55/gocode/internal/hashline"
+	"github.com/AlleyBo55/gocode/internal/hooks"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
 	"github.com/AlleyBo55/gocode/internal/manifest"
 	"github.com/AlleyBo55/gocode/internal/mcp"
+	"github.com/AlleyBo55/gocode/internal/migrations"
 	"github.com/AlleyBo55/gocode/internal/mcpclient"
 	"github.com/AlleyBo55/gocode/internal/modes"
 	"github.com/AlleyBo55/gocode/internal/orchestrator"
@@ -38,6 +47,8 @@ import (
 	"github.com/AlleyBo55/gocode/internal/queryengine"
 	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/runtime"
+	"github.com/AlleyBo55/gocode/internal/structout"
+	"github.com/AlleyBo55/gocode/internal/swarm"
 	"github.com/AlleyBo55/gocode/internal/tui"
 	"github.com/AlleyBo55/gocode/internal/session"
 	"github.com/AlleyBo55/gocode/internal/setup"
@@ -46,9 +57,10 @@ import (
 	"github.com/AlleyBo55/gocode/internal/toolimpl"
 	"github.com/AlleyBo55/gocode/internal/toolpool"
 	"github.com/AlleyBo55/gocode/internal/tools"
+	"github.com/AlleyBo55/gocode/internal/worktree"
 )
 
-var version = "v0.8.1"
+var version = "v0.9.0"
 
 // isTerminal checks if stdout is a terminal (not piped).
 func isTerminal() bool {
@@ -176,8 +188,14 @@ func main() {
 	}
 
 	execReg := execution.BuildExecutionRegistry(cmdReg, toolReg)
-	sessionStore := session.NewSessionStore("")
+	sessionStore := session.NewSessionStore(worktree.SessionDir())
 	rt := runtime.NewPortRuntime(cmdReg, toolReg, execReg, sessionStore)
+
+	// Run pending data/config migrations on startup
+	migrationRunner := migrations.NewRunner(filepath.Join(".gocode"))
+	if err := migrationRunner.Run(); err != nil {
+		log.Printf("[migrations] %v", err)
+	}
 
 	rootCmd := &cobra.Command{
 		Use:     "gocode",
@@ -564,6 +582,77 @@ func main() {
 			useTUI, _ := cmd.Flags().GetBool("tui")
 			_, _ = cmd.Flags().GetBool("no-tui") // kept for backward compat
 			themeName, _ := cmd.Flags().GetString("theme")
+			continueSession, _ := cmd.Flags().GetBool("c")
+			resumeSession, _ := cmd.Flags().GetString("r")
+			outputStyle, _ := cmd.Flags().GetString("output-style")
+
+			// Handle -c: load most recent session for current working directory
+			var loadedSession *session.StoredSession
+			if continueSession {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("getting working directory: %w", err)
+				}
+				s, err := sessionStore.FindMostRecent(cwd)
+				if err != nil {
+					return fmt.Errorf("no recent session found for %s: %w", cwd, err)
+				}
+				loadedSession = &s
+				fmt.Fprintf(os.Stderr, "Continuing session %s\n", s.SessionID)
+			}
+
+			// Handle -r: resume a specific session or list sessions
+			if resumeSession != "" {
+				if resumeSession == "true" || resumeSession == "list" {
+					// List recent sessions for selection
+					metas, err := sessionStore.ListSessions()
+					if err != nil {
+						return fmt.Errorf("listing sessions: %w", err)
+					}
+					if len(metas) == 0 {
+						return fmt.Errorf("no saved sessions found")
+					}
+					fmt.Fprintf(os.Stderr, "Recent sessions:\n")
+					for i, m := range metas {
+						if i >= 10 {
+							break
+						}
+						dir := m.WorkingDir
+						if dir == "" {
+							dir = "(unknown)"
+						}
+						summary := m.Summary
+						if summary == "" {
+							summary = "(no messages)"
+						}
+						fmt.Fprintf(os.Stderr, "  %d. %s  %s  %s\n", i+1, m.SessionID, dir, m.ModTime.Format("2006-01-02 15:04"))
+					}
+					fmt.Fprintf(os.Stderr, "Select session (1-%d): ", min(len(metas), 10))
+					scanner := bufio.NewScanner(os.Stdin)
+					if !scanner.Scan() {
+						return fmt.Errorf("no selection made")
+					}
+					choice := strings.TrimSpace(scanner.Text())
+					idx, err := strconv.Atoi(choice)
+					if err != nil || idx < 1 || idx > min(len(metas), 10) {
+						return fmt.Errorf("invalid selection: %s", choice)
+					}
+					s, err := sessionStore.Load(metas[idx-1].SessionID)
+					if err != nil {
+						return err
+					}
+					loadedSession = &s
+					fmt.Fprintf(os.Stderr, "Resuming session %s\n", s.SessionID)
+				} else {
+					// Load specific session by ID
+					s, err := sessionStore.Load(resumeSession)
+					if err != nil {
+						return fmt.Errorf("loading session %s: %w", resumeSession, err)
+					}
+					loadedSession = &s
+					fmt.Fprintf(os.Stderr, "Resuming session %s\n", s.SessionID)
+				}
+			}
 
 			// Goal-based model selection: if --goal is set and --model wasn't explicitly changed
 			if goal != "" && !cmd.Flags().Changed("model") {
@@ -606,6 +695,23 @@ func main() {
 			orch := orchestrator.NewOrchestrator(router, executor)
 			toolImpl.Set("orchestrator_delegate", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate"})
 			toolImpl.Set("orchestrator_delegate_bg", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate_bg"})
+
+			// Cron scheduler: create, load persisted schedules, register tool, start
+			cronDataDir := filepath.Join(".gocode")
+			cronScheduler := cron.NewScheduler(func(task *cron.Task) {
+				log.Printf("[cron] fired: %s — %s", task.ID, task.Prompt)
+			})
+			if n, err := cronScheduler.LoadSchedules(cronDataDir); err != nil {
+				log.Printf("[cron] failed to load schedules: %v", err)
+			} else if n > 0 {
+				log.Printf("[cron] loaded %d persisted schedule(s)", n)
+			}
+			cron.RegisterCronTool(toolImpl, cronScheduler, cronDataDir)
+			defer cronScheduler.StopAll()
+
+			// Swarm: create manager and register send_agent_message tool
+			swarmMgr := swarm.NewSwarmManager(10)
+			swarm.RegisterSwarmTool(toolImpl, swarmMgr, "main")
 
 			// Phase 2: load skills on startup
 			skillLoader := skills.NewSkillLoader("")
@@ -663,6 +769,18 @@ func main() {
 			}
 			hookRunner := plugins.NewPluginHookRunner(loadedPlugins)
 
+			// Wrap with ShellHookRunner if .gocode/hooks.json exists
+			var hooksRunner agent.HookRunner = hookRunner
+			hooksConfigPath := filepath.Join(".gocode", "hooks.json")
+			if _, statErr := os.Stat(hooksConfigPath); statErr == nil {
+				shellRunner, shellErr := hooks.NewShellHookRunner(hooksConfigPath, hookRunner)
+				if shellErr != nil {
+					log.Printf("[hooks] failed to load shell hooks: %v", shellErr)
+				} else {
+					hooksRunner = shellRunner
+				}
+			}
+
 			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
 				Provider:      fp,
 				Executor:      executor,
@@ -674,11 +792,25 @@ func main() {
 				Prompter:      prompter,
 				Trusted:       trustedStore,
 				ToolCb:        toolCb,
-				Hooks:         hookRunner,
+				Hooks:         hooksRunner,
 			})
 
 			// Phase 1: wrap runtime with SessionRecoveryManager
 			_ = agent.NewSessionRecoveryManager(rt, sessionStore, stdRecoveryLogger{})
+
+			// Restore loaded session if -c or -r was used
+			if loadedSession != nil {
+				var messages []apitypes.InputMessage
+				for _, msg := range loadedSession.Messages {
+					messages = append(messages, apitypes.InputMessage{
+						Role: msg.Role,
+						Content: []apitypes.InputContentBlock{
+							{Kind: "text", Text: msg.Content},
+						},
+					})
+				}
+				rt.RestoreSession(messages)
+			}
 
 			if useTUI && isTerminal() {
 				tui.ApplyTheme(tui.LoadTheme(themeName))
@@ -695,6 +827,15 @@ func main() {
 				Model:    resolvedModel,
 				MaxTurns: maxTurns,
 			}, loadedSkills)
+			r.SetOutputStyle(outputStyle)
+
+			// Wire buddy into REPL banner
+			userID := os.Getenv("USER")
+			if userID == "" {
+				userID = "default"
+			}
+			r.SetBuddy(buddy.RollCompanion(userID))
+
 			return r.Run(context.Background())
 		},
 	}
@@ -714,6 +855,10 @@ func main() {
 	chatCmd.Flags().Bool("tui", false, "Force bubbletea TUI mode")
 	chatCmd.Flags().Bool("no-tui", false, "Force line-based REPL mode (disable TUI)")
 	chatCmd.Flags().String("theme", "", "TUI color theme (golang, monokai, dracula, nord)")
+	chatCmd.Flags().BoolP("c", "c", false, "Continue most recent session for current directory")
+	chatCmd.Flags().StringP("r", "r", "", "Resume a session by ID, or pass 'list' to select interactively")
+	chatCmd.Flags().Lookup("r").NoOptDefVal = "list"
+	chatCmd.Flags().String("output-style", "markdown", "Output style: concise, verbose, markdown, minimal")
 	rootCmd.AddCommand(chatCmd)
 
 	// --- profile commands ---
@@ -919,6 +1064,8 @@ func main() {
 			skillName, _ := cmd.Flags().GetString("skill")
 			printPrompt, _ := cmd.Flags().GetBool("print")
 			verbose, _ := cmd.Flags().GetBool("verbose")
+			outputFormat, _ := cmd.Flags().GetString("output-format")
+			outputSchema, _ := cmd.Flags().GetString("output-schema")
 
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
@@ -989,6 +1136,47 @@ func main() {
 			// Phase 1: wrap runtime with SessionRecoveryManager
 			_ = agent.NewSessionRecoveryManager(rt, sessionStore, stdRecoveryLogger{})
 
+			// Structured output mode: collect tool calls and output JSON
+			if outputFormat == "json" {
+				writer := structout.NewWriter(outputSchema)
+				cb := structout.NewToolCallbackWrapper(writer)
+				rt.SetToolCb(cb)
+
+				resp, err := rt.SendUserMessage(context.Background(), args[0])
+				if err != nil {
+					return err
+				}
+
+				// Extract result text from response
+				var resultText string
+				for _, block := range resp.Content {
+					if block.Kind == "text" {
+						resultText += block.Text
+					}
+				}
+
+				usage := rt.GetUsage()
+				inputCostPer1M := 3.0
+				outputCostPer1M := 15.0
+				totalCost := float64(usage.InputTokens)/1_000_000*inputCostPer1M + float64(usage.OutputTokens)/1_000_000*outputCostPer1M
+
+				data, finalizeErr := writer.Finalize(resultText, structout.UsageSummary{
+					InputTokens:  usage.InputTokens,
+					OutputTokens: usage.OutputTokens,
+					TotalCost:    totalCost,
+				})
+				if finalizeErr != nil {
+					// Output the JSON even on validation failure, then exit non-zero
+					if data != nil {
+						fmt.Println(string(data))
+					}
+					fmt.Fprintf(os.Stderr, "schema validation failed: %v\n", finalizeErr)
+					os.Exit(1)
+				}
+				fmt.Println(string(data))
+				return nil
+			}
+
 			return repl.RunOneShot(context.Background(), rt, args[0], !noStream, os.Stdout)
 		},
 	}
@@ -1001,6 +1189,8 @@ func main() {
 	promptCmd.Flags().String("skill", "", "Activate a skill by name (prepends skill system prompt)")
 	promptCmd.Flags().Bool("print", false, "Print system prompt and exit")
 	promptCmd.Flags().Bool("verbose", false, "Log API request/response sizes")
+	promptCmd.Flags().String("output-format", "", "Output format: 'json' for structured JSON output")
+	promptCmd.Flags().String("output-schema", "", "Path to JSON Schema for validating structured output")
 	rootCmd.AddCommand(promptCmd)
 
 	// 21. mcp-serve
@@ -1258,6 +1448,40 @@ func main() {
 		},
 	})
 	rootCmd.AddCommand(pluginCmd)
+
+	// --- bridge — start the Bridge WebSocket server ---
+	bridgeCmd := &cobra.Command{
+		Use:   "bridge",
+		Short: "Start the Bridge WebSocket server for IDE integration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			port, _ := cmd.Flags().GetInt("port")
+
+			b := bridge.NewBridge(port)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			if err := b.Start(ctx); err != nil {
+				return fmt.Errorf("starting bridge: %w", err)
+			}
+
+			fmt.Fprintf(os.Stderr, "Bridge WebSocket server listening on 127.0.0.1:%d\n", b.Port())
+
+			// Block until Ctrl+C
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			<-sigCh
+
+			fmt.Fprintf(os.Stderr, "\nShutting down bridge server...\n")
+			cancel()
+			if err := b.Stop(); err != nil {
+				return fmt.Errorf("stopping bridge: %w", err)
+			}
+			return nil
+		},
+	}
+	bridgeCmd.Flags().Int("port", bridge.DefaultPort, "WebSocket server port")
+	rootCmd.AddCommand(bridgeCmd)
 
 	// --- auth — manage remote access auth keys ---
 	authCmd := &cobra.Command{

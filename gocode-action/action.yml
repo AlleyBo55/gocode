@@ -1,0 +1,46 @@
+name: 'gocode-action'
+description: 'Run gocode agent in GitHub Actions for PR review and issue implementation'
+inputs:
+  prompt:
+    description: 'Prompt to send to gocode'
+    required: false
+    default: ''
+  provider_key:
+    description: 'API key for the LLM provider'
+    required: true
+  permissions:
+    description: 'read-only or read-write'
+    default: 'read-only'
+  trigger:
+    description: 'pr-comment, issue-assign, or manual'
+    default: 'manual'
+runs:
+  using: 'composite'
+  steps:
+    - name: Install gocode
+      shell: bash
+      run: |
+        curl -fsSL https://raw.githubusercontent.com/AlleyBo55/gocode/main/install.sh | bash
+        echo "$HOME/.gocode/bin" >> "$GITHUB_PATH"
+
+    - name: Configure provider key
+      shell: bash
+      env:
+        PROVIDER_KEY: ${{ inputs.provider_key }}
+      run: echo "GOCODE_API_KEY=$PROVIDER_KEY" >> "$GITHUB_ENV"
+
+    - name: Run gocode
+      shell: bash
+      env:
+        GOCODE_API_KEY: ${{ inputs.provider_key }}
+        GOCODE_PERMISSIONS: ${{ inputs.permissions }}
+        GOCODE_TRIGGER: ${{ inputs.trigger }}
+      run: |
+        if [ -n "${{ inputs.prompt }}" ]; then
+          gocode prompt --output-format json "${{ inputs.prompt }}"
+        elif [ "${{ inputs.trigger }}" = "pr-comment" ] || [ "${{ inputs.trigger }}" = "issue-assign" ]; then
+          exec "${{ github.action_path }}/entrypoint.sh"
+        else
+          echo "No prompt provided and trigger is manual. Nothing to do."
+          exit 0
+        fi
