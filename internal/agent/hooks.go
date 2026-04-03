@@ -10,8 +10,10 @@ type HookRunner interface {
 
 // HookResult captures the outcome of a hook execution.
 type HookResult struct {
-	Denied   bool
-	Messages []string
+	Denied       bool
+	Messages     []string
+	UpdatedInput map[string]interface{} // modified tool input from hook
+	Escalate     bool                   // true = ask user for permission
 }
 
 // IsDenied returns true if the hook denied the operation.

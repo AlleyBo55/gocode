@@ -10,16 +10,26 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
+	"github.com/AlleyBo55/gocode/internal/buddy"
+	"github.com/AlleyBo55/gocode/internal/checkpoint"
+	"github.com/AlleyBo55/gocode/internal/customcmd"
+	"github.com/AlleyBo55/gocode/internal/dream"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
 	"github.com/AlleyBo55/gocode/internal/memory"
+	"github.com/AlleyBo55/gocode/internal/outputstyles"
 	"github.com/AlleyBo55/gocode/internal/skills"
 	"github.com/AlleyBo55/gocode/internal/tasks"
+	"github.com/AlleyBo55/gocode/internal/ultraplan"
+	"github.com/AlleyBo55/gocode/internal/vim"
+	"github.com/AlleyBo55/gocode/internal/voice"
+	"github.com/AlleyBo55/gocode/internal/worktree"
 )
 
 // REPLConfig holds configuration for the REPL display.
@@ -31,33 +41,89 @@ type REPLConfig struct {
 
 // REPL provides the interactive terminal chat interface.
 type REPL struct {
-	runtime *agent.ConversationRuntime
-	reader  io.Reader
-	writer  io.Writer
-	display *Display
-	config  REPLConfig
-	skills  []skills.Skill
+	runtime      *agent.ConversationRuntime
+	reader       io.Reader
+	writer       io.Writer
+	display      *Display
+	config       REPLConfig
+	skills       []skills.Skill
+	customCmds   *customcmd.Loader
+	checkpointMgr *checkpoint.Manager
+	worktreeMgr  *worktree.Manager
+	voiceListener *voice.Listener
+	ultraplanner *ultraplan.Planner
+	dreamEngine  *dream.Dreamer
+	vimState     *vim.PersistentState
+	outputStyle  string
+	buddy        *buddy.Companion
 }
 
 // NewREPL creates a new REPL.
 func NewREPL(rt *agent.ConversationRuntime, r io.Reader, w io.Writer, cfg REPLConfig, sk []skills.Skill) *REPL {
 	return &REPL{
-		runtime: rt,
-		reader:  r,
-		writer:  w,
-		display: NewDisplay(w),
-		config:  cfg,
-		skills:  sk,
+		runtime:     rt,
+		reader:      r,
+		writer:      w,
+		display:     NewDisplay(w),
+		config:      cfg,
+		skills:      sk,
+		customCmds:  customcmd.NewLoader(),
+		vimState:    vim.NewPersistentState(),
+		outputStyle: "markdown",
 	}
+}
+
+// SetCheckpointManager sets the checkpoint manager for /undo support.
+func (r *REPL) SetCheckpointManager(mgr *checkpoint.Manager) {
+	r.checkpointMgr = mgr
+}
+
+// SetWorktreeManager sets the worktree manager for /worktree support.
+func (r *REPL) SetWorktreeManager(mgr *worktree.Manager) {
+	r.worktreeMgr = mgr
+}
+
+// SetVoiceListener sets the voice listener for /voice support.
+func (r *REPL) SetVoiceListener(l *voice.Listener) {
+	r.voiceListener = l
+}
+
+// SetUltraPlanner sets the ultraplan planner for /ultraplan support.
+func (r *REPL) SetUltraPlanner(p *ultraplan.Planner) {
+	r.ultraplanner = p
+}
+
+// SetDreamEngine sets the dream engine for idle/session-end memory consolidation.
+func (r *REPL) SetDreamEngine(d *dream.Dreamer) {
+	r.dreamEngine = d
+}
+
+// SetOutputStyle sets the active output style.
+func (r *REPL) SetOutputStyle(style string) {
+	r.outputStyle = style
+}
+
+// SetBuddy sets the terminal companion displayed in the banner.
+func (r *REPL) SetBuddy(b *buddy.Companion) {
+	r.buddy = b
+}
+
+// buddyLine returns a short summary string for the banner, or empty if no buddy is set.
+func (r *REPL) buddyLine() string {
+	if r.buddy == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s — %s (%s)", r.buddy.Name, r.buddy.Species, r.buddy.Rarity)
 }
 
 // Run starts the interactive REPL loop.
 func (r *REPL) Run(ctx context.Context) error {
 	scanner := bufio.NewScanner(r.reader)
 	PrintBanner(r.writer, BannerConfig{
-		Version:  r.config.Version,
-		Model:    r.config.Model,
-		MaxTurns: r.config.MaxTurns,
+		Version:   r.config.Version,
+		Model:     r.config.Model,
+		MaxTurns:  r.config.MaxTurns,
+		BuddyLine: r.buddyLine(),
 	})
 
 	for {
@@ -66,6 +132,9 @@ func (r *REPL) Run(ctx context.Context) error {
 		if err != nil {
 			if err == io.EOF {
 				fmt.Fprintln(r.writer, "\nGoodbye!")
+				if r.dreamEngine != nil {
+					r.dreamEngine.RunFinalConsolidation(ctx) //nolint:errcheck
+				}
 				return nil
 			}
 			return err
@@ -79,6 +148,9 @@ func (r *REPL) Run(ctx context.Context) error {
 		switch ParseSlashCommand(input) {
 		case CmdExit:
 			fmt.Fprintln(r.writer, "Goodbye!")
+			if r.dreamEngine != nil {
+				r.dreamEngine.RunFinalConsolidation(ctx) //nolint:errcheck
+			}
 			return nil
 		case CmdClear:
 			r.runtime.RestoreSession(nil)
@@ -121,7 +193,8 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintln(r.writer, "  /plan        Start planning session")
 			fmt.Fprintln(r.writer, "  /init-deep   Generate AGENTS.md files")
 			fmt.Fprintln(r.writer, "  /diff        Show git diff of changes")
-			fmt.Fprintln(r.writer, "  /undo        Stash uncommitted changes")
+			fmt.Fprintln(r.writer, "  /undo        Undo changes (checkpoints or stash)")
+			fmt.Fprintln(r.writer, "  /undo N      Restore to checkpoint N")
 			fmt.Fprintln(r.writer, "  /redo        Restore stashed changes")
 			fmt.Fprintln(r.writer, "  /status      Show session stats")
 			fmt.Fprintln(r.writer, "  /review      Ask agent to review changes")
@@ -132,6 +205,22 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintln(r.writer, "  /commit      Auto-commit changes with generated message")
 			fmt.Fprintln(r.writer, "  /memory      Manage persistent memories")
 			fmt.Fprintln(r.writer, "  /tasks       Manage task list")
+			fmt.Fprintln(r.writer, "  /worktree    Manage git worktrees")
+			fmt.Fprintln(r.writer, "  /voice       Toggle voice input")
+			fmt.Fprintln(r.writer, "  /ultraplan   Deep planning with powerful model")
+			fmt.Fprintln(r.writer, "  /vim         Toggle vim keybindings")
+			fmt.Fprintln(r.writer, "  /output-style Show or switch output style")
+			// Append custom commands to help output.
+			if cmds, err := r.customCmds.LoadAll(); err == nil && len(cmds) > 0 {
+				fmt.Fprintln(r.writer, "\nCustom commands:")
+				for _, cmd := range cmds {
+					desc := cmd.Description
+					if desc == "" {
+						desc = "(no description)"
+					}
+					fmt.Fprintf(r.writer, "  /%-12s %s\n", cmd.Name, desc)
+				}
+			}
 			continue
 		case CmdModel:
 			r.handleModelCommand(input)
@@ -140,17 +229,7 @@ func (r *REPL) Run(ctx context.Context) error {
 			r.handleDiffCommand()
 			continue
 		case CmdUndo:
-			out, err := exec.Command("git", "diff", "--stat").Output()
-			if err != nil || strings.TrimSpace(string(out)) == "" {
-				fmt.Fprintln(r.writer, "Nothing to undo.")
-				continue
-			}
-			fmt.Fprintf(r.writer, "Stashing:\n%s", string(out))
-			if stashErr := exec.Command("git", "stash", "push", "-m", "gocode-undo").Run(); stashErr != nil {
-				fmt.Fprintf(r.writer, "Error stashing changes: %v\n", stashErr)
-			} else {
-				fmt.Fprintln(r.writer, "Changes stashed (use /redo to restore).")
-			}
+			r.handleUndoCommand(input)
 			continue
 		case CmdRedo:
 			out, err := exec.Command("git", "stash", "list").Output()
@@ -228,6 +307,44 @@ func (r *REPL) Run(ctx context.Context) error {
 		case CmdTasks:
 			r.handleTasksCommand(input)
 			continue
+		case CmdWorktree:
+			r.handleWorktreeCommand(input)
+			continue
+		case CmdVoice:
+			r.handleVoiceCommand()
+			continue
+		case CmdVim:
+			r.vimState.Enabled = !r.vimState.Enabled
+			if r.vimState.Enabled {
+				fmt.Fprintln(r.writer, "Vim mode: ON")
+			} else {
+				fmt.Fprintln(r.writer, "Vim mode: OFF")
+			}
+			continue
+		case CmdOutputStyle:
+			r.handleOutputStyleCommand(input)
+			continue
+		case CmdUltraPlan:
+			taskDesc := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/ultraplan"))
+			if taskDesc == "" {
+				fmt.Fprintln(r.writer, "Usage: /ultraplan <task description>")
+				continue
+			}
+			if r.ultraplanner == nil {
+				fmt.Fprintln(r.writer, "ULTRAPLAN not configured. Ensure an ultrabrain provider is set up.")
+				continue
+			}
+			fmt.Fprintln(r.writer, "Starting ULTRAPLAN deep planning session...")
+			resultCh := r.ultraplanner.PlanBackground(ctx, taskDesc)
+			go func() {
+				result := <-resultCh
+				if result.Err != nil {
+					fmt.Fprintf(r.writer, "\n%s✗ ULTRAPLAN error: %v%s\n", cRed, result.Err, ansiReset)
+				} else {
+					fmt.Fprintf(r.writer, "\n%s✓ ULTRAPLAN complete:%s\n%s\n", cGreen, ansiReset, result.Output)
+				}
+			}()
+			continue
 		case CmdStatus:
 			cwd, _ := os.Getwd()
 			usage := r.runtime.GetUsage()
@@ -291,6 +408,21 @@ func (r *REPL) Run(ctx context.Context) error {
 				}
 			}
 			continue
+		}
+
+		// Try to resolve custom slash commands for unrecognized /commands.
+		if strings.HasPrefix(input, "/") {
+			parts := strings.Fields(input)
+			cmdName := strings.TrimPrefix(parts[0], "/")
+			args := parts[1:]
+			if resolved, err := r.customCmds.Resolve(cmdName, args); err == nil {
+				input = resolved
+			} else if !strings.Contains(err.Error(), "unknown command") {
+				// Known command but bad args — show error and re-prompt.
+				fmt.Fprintf(r.writer, "Error: %v\n", err)
+				continue
+			}
+			// If "unknown command", fall through — treat as normal input.
 		}
 
 		// Feature 4: @general subagent inline — rewrite prompt for orchestrator
@@ -387,6 +519,11 @@ func (r *REPL) Run(ctx context.Context) error {
 					fmt.Fprintf(r.writer, "%sSummary: %s%s\n\n", cGray, summary, ansiReset)
 				}
 			}
+		}
+
+		// Reset dream idle timer after each user interaction.
+		if r.dreamEngine != nil {
+			r.dreamEngine.ResetIdleTimer()
 		}
 	}
 }
@@ -557,6 +694,164 @@ func (r *REPL) handleTasksCommand(input string) {
 		return
 	}
 	fmt.Fprintln(r.writer, "Usage: /tasks [add <text> | done <id>]")
+}
+
+// handleWorktreeCommand processes the /worktree slash command.
+func (r *REPL) handleWorktreeCommand(input string) {
+	if r.worktreeMgr == nil {
+		// Try to auto-detect repo root for a manager.
+		ctx, err := worktree.Detect()
+		if err != nil {
+			fmt.Fprintln(r.writer, "Not in a git repository.")
+			return
+		}
+		r.worktreeMgr = worktree.NewManager(ctx.RepoRoot)
+	}
+
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/worktree"))
+	if arg == "" {
+		fmt.Fprintln(r.writer, "Usage: /worktree create <branch> | /worktree list")
+		return
+	}
+
+	if strings.HasPrefix(arg, "create ") {
+		branch := strings.TrimSpace(strings.TrimPrefix(arg, "create "))
+		if branch == "" {
+			fmt.Fprintln(r.writer, "Usage: /worktree create <branch>")
+			return
+		}
+		path := branch // default worktree path is the branch name
+		if err := r.worktreeMgr.Create(branch, path); err != nil {
+			fmt.Fprintf(r.writer, "Error creating worktree: %v\n", err)
+			return
+		}
+		fmt.Fprintf(r.writer, "Created worktree for branch %s\n", branch)
+		return
+	}
+
+	if arg == "list" {
+		wts, err := r.worktreeMgr.List()
+		if err != nil {
+			fmt.Fprintf(r.writer, "Error listing worktrees: %v\n", err)
+			return
+		}
+		if len(wts) == 0 {
+			fmt.Fprintln(r.writer, "No worktrees found.")
+			return
+		}
+		fmt.Fprintln(r.writer, "Active worktrees:")
+		for _, wt := range wts {
+			branch := wt.Branch
+			if branch == "" {
+				branch = "(detached)"
+			}
+			fmt.Fprintf(r.writer, "  %s  %s  %s\n", wt.Path, branch, wt.HEAD[:min(7, len(wt.HEAD))])
+		}
+		return
+	}
+
+	fmt.Fprintln(r.writer, "Usage: /worktree create <branch> | /worktree list")
+}
+
+// handleVoiceCommand toggles voice input mode.
+func (r *REPL) handleVoiceCommand() {
+	if r.voiceListener == nil {
+		fmt.Fprintln(r.writer, "Voice input is not configured. No STT engine available.")
+		return
+	}
+
+	active, err := r.voiceListener.Toggle()
+	if err != nil {
+		fmt.Fprintf(r.writer, "Voice error: %v\n", err)
+		return
+	}
+
+	if active {
+		fmt.Fprintln(r.writer, "🎤 Listening...")
+	} else {
+		fmt.Fprintln(r.writer, "Voice input disabled.")
+	}
+}
+
+// handleOutputStyleCommand processes the /output-style slash command.
+func (r *REPL) handleOutputStyleCommand(input string) {
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/output-style"))
+	reg := outputstyles.NewRegistry()
+
+	if arg == "" {
+		fmt.Fprintf(r.writer, "Current output style: %s%s%s\n", cGreen+ansiBold, r.outputStyle, ansiReset)
+		return
+	}
+
+	if reg.Get(arg) == nil {
+		names := reg.List()
+		fmt.Fprintf(r.writer, "Unknown style: %s. Available styles: %s\n", arg, strings.Join(names, ", "))
+		return
+	}
+
+	r.outputStyle = arg
+	fmt.Fprintf(r.writer, "Output style set to: %s%s%s\n", cGreen+ansiBold, r.outputStyle, ansiReset)
+}
+
+// handleUndoCommand processes the /undo slash command.
+// With a checkpoint manager: /undo lists checkpoints, /undo N restores to checkpoint N.
+// Without a checkpoint manager: falls back to git stash behavior.
+func (r *REPL) handleUndoCommand(input string) {
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/undo"))
+
+	// If no checkpoint manager, fall back to stash-based undo
+	if r.checkpointMgr == nil {
+		r.undoViaStash()
+		return
+	}
+
+	if arg == "" {
+		// List checkpoints
+		checkpoints, err := r.checkpointMgr.List()
+		if err != nil {
+			fmt.Fprintf(r.writer, "Error listing checkpoints: %v\n", err)
+			return
+		}
+		if len(checkpoints) == 0 {
+			fmt.Fprintln(r.writer, "No checkpoints in this session.")
+			return
+		}
+		fmt.Fprintln(r.writer, "Checkpoints:")
+		for _, cp := range checkpoints {
+			ts := cp.Timestamp.Format("15:04:05")
+			fmt.Fprintf(r.writer, "  %d. [%s] %s\n", cp.ID, ts, cp.Message)
+		}
+		fmt.Fprintln(r.writer, "\nUse /undo N to restore to checkpoint N.")
+		return
+	}
+
+	// Parse checkpoint ID
+	id, err := strconv.Atoi(arg)
+	if err != nil {
+		fmt.Fprintf(r.writer, "Invalid checkpoint ID: %s\n", arg)
+		return
+	}
+
+	if err := r.checkpointMgr.Restore(id); err != nil {
+		fmt.Fprintf(r.writer, "Error restoring checkpoint: %v\n", err)
+		return
+	}
+	fmt.Fprintf(r.writer, "Restored to checkpoint %d.\n", id)
+}
+
+// undoViaStash is the legacy stash-based undo fallback.
+func (r *REPL) undoViaStash() {
+	out, err := exec.Command("git", "diff", "--stat").Output()
+	if err != nil || strings.TrimSpace(string(out)) == "" {
+		fmt.Fprintln(r.writer, "Nothing to undo.")
+		return
+	}
+	fmt.Fprintf(r.writer, "Stashing:\n%s", string(out))
+	if stashErr := exec.Command("git", "stash", "push", "-m", "gocode-undo").Run(); stashErr != nil {
+		fmt.Fprintf(r.writer, "Error stashing changes: %v\n", stashErr)
+	} else {
+		fmt.Fprintln(r.writer, "Changes stashed (use /redo to restore).")
+	}
 }
 
 // TerminalToolCallback updates the terminal during tool execution.

@@ -4,6 +4,112 @@ All notable changes to gocode are documented here.
 
 ---
 
+## v0.9.0 — One More Thing.
+
+*18 new features. 8 new skills. The agent learns to dream, plan, coordinate, and remember.*
+
+### New Skills (8)
+- **loop** — Autonomous "keep going until done" mode. The agent continues executing without waiting for input until the task is complete or it hits a blocker.
+- **stuck** — Structured recovery mode. When the agent gets confused or loops, it re-reads the original request, reviews completed actions, identifies the blocker, and tries an alternative approach.
+- **debug** — Structured debugging methodology. Reproduce → examine errors → add logging → isolate root cause → fix → verify.
+- **verify** — Work verification. Re-reads modified files, runs tests, checks for regressions, validates against original requirements.
+- **simplify** — Code complexity reduction. Identifies dead code, flattens nested logic, extracts reusable functions, prefers stdlib solutions.
+- **remember** — Active memory management. Saves important facts, project conventions, user preferences, and architectural decisions to the memory system.
+- **skillify** — Meta-skill creation. Analyzes conversation patterns and generates reusable skill JSON profiles from recurring workflows.
+- **batch** — Parallel batch processing. Enumerates targets, processes each individually, reports per-target results with a summary.
+
+### ULTRAPLAN — Deep Planning (`internal/ultraplan/`)
+- Background planning agent with 30-minute timeout
+- Routes to strongest available model via `CategoryUltrabrain` (Opus-class)
+- `/ultraplan <task>` slash command for on-demand deep planning
+- Non-blocking: user continues chatting while planner works
+- Keyword detection triggers automatic planning on "ultraplan" in messages
+
+### Dream System — Autonomous Memory Consolidation (`internal/dream/`)
+- Four-phase consolidation cycle: orient → gather → consolidate → prune
+- Triggers automatically after 5 minutes of session idle
+- Runs final consolidation on session end
+- File-lock protection against concurrent writes
+- Configurable idle duration and relevance threshold (default 0.05)
+
+### Vim Keybindings (`internal/vim/`)
+- Full vim-mode editing: Normal, Insert, Visual, Operator-Pending, Search modes
+- Motions: h/j/k/l, w/b/e, 0/$, gg/G, f/F with count prefixes
+- Operators: d/c/y with motion and text-object composition (dw, ciw, ya", etc.)
+- Text objects: iw/aw, i"/a", i(/a(
+- Line operations: dd, yy, p, x, r
+- Search: / forward, ? backward with wrap-around
+- Ex commands: :w (submit), :q (quit), :wq (both)
+- `/vim` toggle command in REPL
+
+### Cron/Scheduled Tasks (`internal/cron/`)
+- 5-field cron expression parser (minute/hour/dom/month/dow)
+- `ScheduleCronTool` registered in tool registry — agents can create/delete/list cron jobs
+- Persistent schedules in `.gocode/cron.json`
+- Background goroutine timer-based execution
+- Human-readable cron descriptions via `cronToHuman()`
+- Scheduler wired into startup (loads persisted schedules) and shutdown (cleanup)
+
+### Bridge/IDE Integration (`internal/bridge/`)
+- WebSocket server on configurable port (default 19836)
+- Pure stdlib WebSocket implementation (RFC 6455, no external deps)
+- JSON message protocol: chat, tool_permission, status, error, notification
+- Session management with auto-cleanup on disconnect (30s timeout)
+- Permission bridge: forwards tool permission prompts to IDE for approval
+- Message bridge: streams agent responses to IDE in real-time
+- Port retry: tries 5 sequential ports if default is in use
+- `gocode bridge --port <port>` CLI command
+
+### Swarm Coordination (`internal/swarm/`)
+- SwarmManager with agent discovery registry
+- Mailbox-based inter-agent messaging (buffered channels, non-blocking)
+- `SendMessageTool` (`send_agent_message`) for agent-to-agent communication
+- Maximum swarm size enforcement (default 10 agents)
+- Agent status tracking: running, idle, completed
+- `RegisterSwarmTool` convenience function for tool registry wiring
+
+### PDF Handling
+- PDF detection in FileReadTool (`.pdf` extension, case-insensitive)
+- Delegates to `pdf.ReadPDF` for base64-encoded content extraction
+- Magic bytes validation, size limits (50MB)
+
+### Output Styles (`internal/outputstyles/`)
+- 4 built-in styles: concise, verbose, markdown, minimal
+- User-defined styles from `.gocode/output-styles/` directory
+- `--output-style` CLI flag on `gocode chat`
+- `/output-style [style]` slash command for mid-session switching
+- Style validation against registry
+
+### Migrations System (`internal/migrations/`)
+- Automatic config/data format upgrades on startup
+- Migration runner with version tracking in `.gocode/version.json`
+- Sequential execution of pending migrations
+- Backup creation before migration execution
+
+### Buddy System (`internal/buddy/`)
+- 18 companion species across 5 rarity tiers (Common/Uncommon/Rare/Epic/Legendary)
+- Deterministic gacha via Mulberry32 PRNG seeded from user ID
+- ASCII sprite rendering with animation frames
+- Buddy display in REPL banner (name, species, rarity)
+- Stats tracking: DEBUGGING, CHAOS, SNARK (0-100)
+
+### New CLI Commands & Flags
+- `gocode bridge --port <port>` — start WebSocket bridge server
+- `--output-style <style>` — set output style (concise, verbose, markdown, minimal)
+- `--vim` — enable vim keybindings
+
+### New Slash Commands
+- `/ultraplan <task>` — deep planning with strongest model
+- `/vim` — toggle vim keybindings
+- `/output-style [style]` — switch or show output style
+
+### Infrastructure
+- All 16 skills verified loading correctly (8 original + 8 new)
+- Full test suite: `go build ./...` and `go test ./...` — zero failures
+- Documentation updated: README comparison table, advanced-features.md, cli-reference.md
+
+---
+
 ## v0.8.0 — The Universal Model Layer
 
 ### 200+ Model Support

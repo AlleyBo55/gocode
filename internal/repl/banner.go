@@ -25,10 +25,11 @@ const (
 
 // BannerConfig holds the info displayed in the welcome banner.
 type BannerConfig struct {
-	Version  string
-	Model    string
-	MaxTurns int
-	Cwd      string
+	Version   string
+	Model     string
+	MaxTurns  int
+	Cwd       string
+	BuddyLine string // optional — empty means no buddy
 }
 
 // PrintBanner renders the OpenCode-style welcome screen with Go blue GOCODE branding.
@@ -81,6 +82,11 @@ func PrintBanner(w io.Writer, cfg BannerConfig) {
 	fmt.Fprintf(w, "  %smodel%s %s%s%s  %sturns%s %s%d%s\n",
 		gray, reset, white+bold, cfg.Model, reset,
 		gray, reset, white+bold, cfg.MaxTurns, reset)
+
+	// Buddy line (optional)
+	if cfg.BuddyLine != "" {
+		fmt.Fprintf(w, "  %sbuddy%s %s%s%s\n", gray, reset, goTealC, cfg.BuddyLine, reset)
+	}
 	fmt.Fprintln(w)
 
 	// Separator

@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/AlleyBo55/gocode/internal/pdf"
 )
 
 // ToolResult is the outcome of executing a tool.
@@ -153,6 +155,18 @@ func (t *FileReadTool) Execute(params map[string]interface{}) ToolResult {
 	path, _ := params["path"].(string)
 	if path == "" {
 		return ToolResult{Success: false, Error: "missing required param: path"}
+	}
+
+	// Handle PDF files via the pdf package.
+	if strings.EqualFold(filepath.Ext(path), ".pdf") {
+		result, err := pdf.ReadPDF(path)
+		if err != nil {
+			return ToolResult{Success: false, Error: fmt.Sprintf("reading PDF: %v", err)}
+		}
+		return ToolResult{
+			Success: true,
+			Output:  fmt.Sprintf("[PDF base64-encoded, %d bytes original]\n%s", result.OriginalSize, result.Base64),
+		}
 	}
 
 	data, err := os.ReadFile(path)

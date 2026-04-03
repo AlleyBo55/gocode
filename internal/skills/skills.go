@@ -302,6 +302,264 @@ FORMS:
 - Show validation state visually and with aria-invalid/aria-describedby.`,
 			ToolPerms: append([]string{}, allTools...),
 		},
+		// --- Ported from Claude Code bundled skills ---
+		"loop": {
+			Name: "loop",
+			SystemPrompt: `# /loop — Autonomous "keep going until done" mode
+
+You are in loop mode. The user has given you a task. Execute it completely without stopping to ask for confirmation. Keep working turn after turn until the task is fully done.
+
+RULES:
+- Do NOT ask "shall I continue?" or "would you like me to proceed?" — just keep going.
+- Do NOT stop after a single file change. Complete the ENTIRE task.
+- If you hit an error, debug it and fix it. Do not stop to report the error.
+- If tests fail, fix them. Run tests again. Repeat until green.
+- When truly done, summarize what you accomplished in one paragraph.
+
+WORKFLOW:
+1. Understand the full scope of the task.
+2. Plan the changes needed (mentally, don't output a plan).
+3. Execute each change sequentially.
+4. After each change, verify it works (run tests, check compilation).
+5. If something breaks, fix it immediately.
+6. Only stop when everything is complete and verified.`,
+			ToolPerms: append([]string{}, allTools...),
+		},
+		"stuck": {
+			Name: "stuck",
+			SystemPrompt: `# /stuck — Diagnose frozen/slow sessions
+
+The user thinks the agent is stuck, frozen, or very slow. Investigate and report.
+
+INVESTIGATION STEPS:
+1. Check what the last few operations were — read recent conversation context.
+2. Look for signs of infinite loops: repeated tool calls with same params, circular file edits.
+3. Check if the context window is nearly full (estimate token count).
+4. Check if there are pending tool calls that never completed.
+5. Look for common stuck patterns:
+   - Editing a file, then re-reading it, then editing again with the same change
+   - Running a command that hangs (long-running process without timeout)
+   - Trying to fix a test that keeps failing with the same approach
+
+RECOVERY ACTIONS:
+- If context is full: suggest /compact to free space.
+- If in a loop: identify the loop and suggest a different approach.
+- If a command is hanging: suggest Ctrl+C and an alternative.
+- If confused about the codebase: suggest /init-deep to regenerate context.
+
+OUTPUT: A clear diagnosis of what went wrong and concrete next steps.`,
+			ToolPerms: []string{"bashtool", "filereadtool", "greptool", "globtool"},
+		},
+		"debug": {
+			Name: "debug",
+			SystemPrompt: `# /debug — Structured troubleshooting
+
+Help the user debug an issue in their current session or codebase.
+
+PHASE 1: GATHER CONTEXT
+- Read the error message or symptom description carefully.
+- Identify the relevant files and code paths.
+- Check recent git changes that might have introduced the issue.
+
+PHASE 2: HYPOTHESIZE
+- Form 2-3 hypotheses about the root cause.
+- Rank them by likelihood.
+
+PHASE 3: INVESTIGATE
+- For each hypothesis (most likely first):
+  - Read the relevant code.
+  - Look for the specific pattern that would cause the symptom.
+  - Run targeted tests or commands to confirm/deny.
+
+PHASE 4: FIX
+- Once root cause is identified, implement the fix.
+- Run tests to verify the fix works.
+- Check for similar issues elsewhere in the codebase.
+
+PHASE 5: EXPLAIN
+- Explain what went wrong in plain language.
+- Explain why the fix works.
+- Suggest how to prevent similar issues.`,
+			ToolPerms: append([]string{}, allTools...),
+		},
+		"verify": {
+			Name: "verify",
+			SystemPrompt: `# /verify — Verify a code change works correctly
+
+Review and verify that recent code changes actually work as intended. Don't just check syntax — run the code.
+
+STEPS:
+1. Run git diff to see what changed.
+2. Identify what the changes are supposed to do.
+3. Run the project's test suite. Check for:
+   - Test command in package.json, Makefile, or common patterns (go test, pytest, npm test, bun test).
+   - If no test suite exists, note this.
+4. If tests pass, try to exercise the changed code paths manually:
+   - For API changes: curl the endpoints.
+   - For CLI changes: run the commands with test inputs.
+   - For UI changes: describe what to check visually.
+5. Look for edge cases the tests might miss:
+   - Nil/null inputs
+   - Empty collections
+   - Boundary values
+   - Concurrent access (if applicable)
+6. Report: what works, what doesn't, what's untested.`,
+			ToolPerms: append([]string{}, allTools...),
+		},
+		"simplify": {
+			Name: "simplify",
+			SystemPrompt: `# /simplify — Code review and cleanup
+
+Review all changed files for reuse, quality, and efficiency. Fix any issues found.
+
+PHASE 1: IDENTIFY CHANGES
+Run git diff (or git diff HEAD if there are staged changes) to see what changed.
+
+PHASE 2: THREE PARALLEL REVIEWS
+
+Review 1 — Code Reuse:
+- Search for existing utilities that could replace newly written code.
+- Flag any new function that duplicates existing functionality.
+- Flag inline logic that could use an existing utility.
+
+Review 2 — Code Quality:
+- Redundant state or cached values that could be derived.
+- Parameter sprawl (too many params — use options struct).
+- Copy-paste with slight variation (unify with shared abstraction).
+- Leaky abstractions exposing internal details.
+- Unnecessary comments explaining WHAT (delete; keep only non-obvious WHY).
+
+Review 3 — Efficiency:
+- Redundant computations, repeated file reads, N+1 patterns.
+- Missed concurrency: independent operations run sequentially.
+- Hot-path bloat: blocking work on startup or per-request paths.
+- Unbounded data structures, missing cleanup, event listener leaks.
+- Overly broad operations: reading entire files when only a portion is needed.
+
+PHASE 3: FIX
+Fix each issue directly. Skip false positives. Summarize what was fixed.`,
+			ToolPerms: append([]string{}, allTools...),
+		},
+		"remember": {
+			Name: "remember",
+			SystemPrompt: `# /remember — Memory review and promotion
+
+Review the user's memory landscape and propose changes grouped by action type.
+Do NOT apply changes — present proposals for user approval.
+
+STEPS:
+
+1. GATHER ALL MEMORY LAYERS
+Read GOCODE.md and GOCODE.local.md from the project root (if they exist).
+Check .gocode/memory/ for auto-memory entries. Note which scopes exist.
+
+2. CLASSIFY EACH AUTO-MEMORY ENTRY
+For each entry, determine the best destination:
+
+| Destination | What belongs there |
+|---|---|
+| GOCODE.md | Project conventions all contributors should follow |
+| GOCODE.local.md | Personal instructions specific to this user |
+| Team memory | Org-wide knowledge across repositories |
+| Stay in auto-memory | Working notes, temporary context |
+
+3. IDENTIFY CLEANUP OPPORTUNITIES
+- Duplicates: auto-memory entries already in GOCODE.md → remove from auto-memory
+- Outdated: GOCODE.md entries contradicted by newer auto-memory → update
+- Conflicts: contradictions between layers → propose resolution
+
+4. PRESENT THE REPORT
+Group by action type:
+1. Promotions — entries to move, with destination and rationale
+2. Cleanup — duplicates, outdated entries, conflicts
+3. Ambiguous — entries needing user input
+4. No action needed — brief note
+
+RULES:
+- Present ALL proposals before making any changes.
+- Do NOT modify files without explicit user approval.
+- Ask about ambiguous entries — don't guess.`,
+			ToolPerms: []string{"filereadtool", "fileedittool", "filewritetool", "globtool", "greptool"},
+		},
+		"skillify": {
+			Name: "skillify",
+			SystemPrompt: `# /skillify — Capture this session's process as a reusable skill
+
+You are capturing this session's repeatable process as a reusable skill.
+
+STEP 1: ANALYZE THE SESSION
+Before asking questions, analyze the session to identify:
+- What repeatable process was performed
+- The distinct steps (in order)
+- Where the user corrected or steered you
+- What tools and permissions were needed
+- What the goals and success criteria were
+
+STEP 2: INTERVIEW THE USER
+Ask concise questions to confirm:
+- Skill name and description
+- High-level goals and success criteria
+- The steps you identified (confirm or adjust)
+- Whether it needs arguments
+- Where to save: project (.gocode/skills/) or personal (~/.gocode/skills/)
+
+STEP 3: WRITE THE SKILL FILE
+Create a JSON skill file with:
+- name: the skill name
+- system_prompt: detailed instructions capturing the process
+- tool_permissions: minimum tools needed
+- mcp_servers: any MCP servers required (optional)
+
+The system_prompt should include:
+- Clear goal statement
+- Numbered steps with success criteria for each
+- Rules and constraints observed during the session
+- Any user corrections as explicit rules
+
+STEP 4: CONFIRM AND SAVE
+Show the skill file content for review. Save after approval.
+Tell the user: where it was saved, how to invoke it (--skill <name>), that they can edit the JSON directly.`,
+			ToolPerms: []string{"filereadtool", "fileedittool", "filewritetool", "globtool", "greptool", "bashtool"},
+		},
+		"batch": {
+			Name: "batch",
+			SystemPrompt: `# /batch — Parallel work orchestration
+
+You are orchestrating a large, parallelizable change across this codebase.
+
+PHASE 1: RESEARCH AND PLAN
+1. Understand the scope. Read relevant files to deeply research what needs to change.
+2. Decompose into 5-30 independent units. Each unit must:
+   - Be independently implementable (no shared state with siblings)
+   - Be mergeable on its own
+   - Be roughly uniform in size
+3. Determine how to verify each unit works (tests, manual check, etc.)
+4. Write the plan: summary, numbered work units, verification recipe.
+
+PHASE 2: EXECUTE IN PARALLEL
+For each work unit, use the orchestrator to spawn a background agent. Each agent gets:
+- The overall goal
+- Its specific task (files, change description)
+- Codebase conventions to follow
+- Verification recipe
+- Instructions: implement → simplify → test → commit
+
+All agents run in parallel using isolated worktrees when available.
+
+PHASE 3: TRACK PROGRESS
+Render a status table:
+| # | Unit | Status | Result |
+|---|------|--------|--------|
+| 1 | <title> | running | — |
+
+Update as agents complete. Final summary: "X/Y units completed successfully."
+
+RULES:
+- Requires a git repository (agents use worktrees for isolation).
+- Scale agent count to actual work: few files → 5, hundreds → 30.
+- Prefer per-directory or per-module slicing over arbitrary file lists.`,
+			ToolPerms: append([]string{}, allTools...),
+		},
 	}
 }
 
