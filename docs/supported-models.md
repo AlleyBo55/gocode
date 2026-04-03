@@ -135,15 +135,21 @@ gocode chat --model together-llama
 
 OpenRouter gives you access to every model from every provider through a single API key. Pass any model ID from [openrouter.ai/models](https://openrouter.ai/models).
 
+gocode auto-detects OpenRouter when the model name contains a `/` and `OPENROUTER_API_KEY` is set. No extra config needed.
+
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-gocode chat --model anthropic/claude-sonnet-4-6
-gocode chat --model openai/gpt-5.4
-gocode chat --model meta-llama/llama-3.3-70b
-gocode chat --model google/gemini-3.1-pro
-gocode chat --model mistralai/mistral-large-latest
-gocode chat --model deepseek/deepseek-chat
-# ... any model on OpenRouter
+gocode chat --model anthropic/claude-sonnet-4-20250514    # Claude
+gocode chat --model openai/gpt-4o                         # GPT-4o
+gocode chat --model google/gemini-2.5-pro-preview         # Gemini
+gocode chat --model x-ai/grok-3                           # Grok
+gocode chat --model moonshotai/kimi-k2                    # Kimi K2
+gocode chat --model minimax/minimax-01                    # MiniMax
+gocode chat --model qwen/qwen-2.5-72b-instruct           # Qwen
+gocode chat --model meta-llama/llama-3.3-70b-instruct     # Llama
+gocode chat --model mistralai/mistral-large-latest        # Mistral
+gocode chat --model deepseek/deepseek-chat                # DeepSeek
+# ... any model on openrouter.ai/models
 ```
 
 ### Azure OpenAI
