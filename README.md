@@ -108,6 +108,27 @@ gocode chat --model llama           # Ollama local
 gocode chat --goal coding           # auto-pick the best coding model
 ```
 
+### One Key. Every Model.
+
+Don't want to manage 11 API keys? Set one OpenRouter key and access every model from every provider.
+
+```bash
+export OPENROUTER_API_KEY=sk-or-your-key
+
+gocode chat --model openai/gpt-4o                         # GPT-4o
+gocode chat --model anthropic/claude-sonnet-4-20250514    # Claude Sonnet
+gocode chat --model google/gemini-2.5-pro-preview         # Gemini
+gocode chat --model x-ai/grok-3                           # Grok
+gocode chat --model moonshotai/kimi-k2                    # Kimi K2
+gocode chat --model minimax/minimax-01                    # MiniMax
+gocode chat --model qwen/qwen-2.5-72b-instruct           # Qwen
+gocode chat --model deepseek/deepseek-chat                # DeepSeek
+gocode chat --model meta-llama/llama-3.3-70b-instruct     # Llama
+gocode chat --model mistralai/mistral-large-latest        # Mistral
+```
+
+One binary. One key. Every model on the planet. Get your key at [openrouter.ai/keys](https://openrouter.ai/keys).
+
 > **[Full Model List — 200+ Models →](docs/supported-models.md)**
 
 ---
