@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="assets/logo.png" alt="gocode — Claude Code rewritten in Go. The fastest AI coding agent runtime." width="500" />
+  <img src="assets/logo.png" alt="gocode — the fastest open-source AI coding agent. One binary. Any model." width="500" />
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go" />
-  <img src="https://img.shields.io/badge/Claude_Code-Go_Port-E34F26?style=for-the-badge" alt="Claude Code Go Port" />
-  <img src="https://img.shields.io/badge/Multi--Model-Claude_GPT_Gemini_Grok-blueviolet?style=for-the-badge" alt="Multi-Model" />
+  <img src="https://img.shields.io/badge/200+_Models-11_Providers-blueviolet?style=for-the-badge" alt="200+ Models" />
+  <img src="https://img.shields.io/badge/Multi--Agent-Orchestration-E34F26?style=for-the-badge" alt="Multi-Agent" />
   <img src="https://img.shields.io/badge/MCP-Protocol_Compliant-blueviolet?style=for-the-badge" alt="MCP Protocol Compliant" />
   <img src="https://img.shields.io/badge/Cursor-Ready-green?style=for-the-badge" alt="Cursor MCP Ready" />
   <img src="https://img.shields.io/badge/Kiro-Integrated-orange?style=for-the-badge" alt="Kiro Integrated" />
@@ -14,13 +14,13 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License" />
 </p>
 
-<h1 align="center">gocode — Claude Code, Rewritten in Go. Now Multi-Model.</h1>
+<h1 align="center">gocode — The Open-Source Claude Code Alternative. Built in Go. Works With Any Model.</h1>
 
 <p align="center">
   <img src="assets/screen1.png" alt="gocode terminal screenshot" width="700" />
 </p>
 
-<h3 align="center">One binary. Zero dependencies. 200+ models. A team of agents.<br/>This is what an AI coding agent should feel like.</h3>
+<h3 align="center">One binary. Zero dependencies. 200+ models. A team of agents.<br/>Inspired by the best terminal AI agents. Built from scratch in Go. Faster than everything else.</h3>
 
 <p align="center">
   <code>go install github.com/AlleyBo55/gocode/cmd/gocode@latest</code>
@@ -28,17 +28,37 @@
 
 ---
 
-## Why gocode Exists
+## Why gocode
 
-Every great product starts with a simple observation.
+We loved what Claude Code did for terminal-based AI coding. But we wanted something faster, model-agnostic, and dependency-free.
 
-Claude Code is a remarkable piece of engineering. But the implementation carries weight it doesn't need. And it only works with Claude.
+So we built gocode from scratch in Go — inspired by the best ideas in terminal AI agents, but with a completely original architecture. Every subsystem was designed and written from the ground up: the provider layer, the agent runtime, the tool executor, the orchestrator, the memory system, the planning engine. All of it.
 
-We asked two questions: **what if the best AI coding agent was also the fastest?** And **what if it worked with any model?**
+The result: a single 12MB binary that starts in under 10 milliseconds, works with 200+ models across 11 providers, and ships with capabilities that most agents don't even attempt.
 
-A complete, ground-up reimplementation in Go — every registry, every scoring algorithm, every subsystem — enhanced with multi-model support, multi-agent orchestration, model fallback chains, IDE-level tooling, and a skills system. One binary, any LLM, instant startup.
+---
 
-gocode starts in under 10 milliseconds. Ships as a single 12MB binary. Works with 200+ models across 11 providers. You download it. You run it. That's it.
+## What Makes gocode Different
+
+### Any Model. Your Choice.
+
+Most terminal agents lock you into one provider. gocode works with all of them. Claude, GPT, Gemini, Grok, DeepSeek, Mistral, Llama, local models — set one env var and go. Or use OpenRouter and access every model with a single API key.
+
+### A Team of Agents, Not Just One
+
+gocode doesn't run a single agent loop. It runs an orchestrator with specialist sub-agents that plan, coordinate, and delegate to each other. Up to 5 concurrent background agents, each with their own model preference and tool permissions.
+
+### Memory That Persists — and Dreams
+
+Cross-session memory that remembers your preferences, project conventions, and architectural decisions. Plus a dream system that autonomously consolidates and prunes memory during idle periods, keeping what matters and forgetting what doesn't.
+
+### IDE-Level Tooling in Your Terminal
+
+Real LSP integration (actual renames, actual go-to-definition — not regex). AST-grep for structural code search. A WebSocket bridge that connects to VS Code, Cursor, Kiro, and Antigravity. This isn't a chatbot with file access. It's an agent with IDE capabilities.
+
+### Instant. Always.
+
+Under 10ms startup. 12MB binary. No runtime dependencies. No Python. No Node. No virtual environments. `go install` and you're done.
 
 ---
 
@@ -46,29 +66,21 @@ gocode starts in under 10 milliseconds. Ships as a single 12MB binary. Works wit
 
 ### v0.9.0 — One More Thing.
 
-We thought we were done. We weren't even close.
+Eighteen new capabilities. Eight new skills that change how the agent thinks. A dream system that consolidates memory while you sleep. A planning engine that delegates to the strongest model in the room. Vim keybindings. A cron scheduler. A swarm of agents that talk to each other. A WebSocket bridge for IDE integration. PDF reading. Output styles. And a buddy system — because even an AI agent deserves a companion.
 
-Eighteen new capabilities. Eight new skills that make the agent think differently. A dream system that consolidates memory while you sleep. A planning engine that delegates to the strongest model in the room and comes back with a blueprint. Vim keybindings — because some of you asked, and we listened. A cron scheduler that runs tasks on your behalf when you're not looking. A swarm of agents that talk to each other. A WebSocket bridge that connects gocode to any IDE. PDF reading. Output styles. A buddy system — because even an AI agent deserves a companion.
+### v0.8.0 — The Universal Model Layer
 
-This isn't an update. This is gocode becoming self-aware.
-
-### v0.8.0 — Every Model. Every Provider. One Binary.
-
-We ripped out the four-provider ceiling and replaced it with a universal model layer. 200+ models. 11 providers. Local inference. Persistent memory. Task management. Runtime hardening. The agent can search the web, delegate to specialists, and remember what you told it last week.
+200+ models. 11 providers. Local inference. Persistent memory. Task management. Web search. The agent can delegate to specialists and remember what you told it last week.
 
 ### v0.7.0 — The Agent Operating System
 
-Full terminal UI. Multi-agent orchestration. Model fallback. 21 slash commands. Skills system. Plugin architecture. LSP integration. AST-grep. Everything Claude Code does, plus everything it doesn't.
-
-### v0.3.0 — The Foundation
-
-38 internal packages. 14 MCP tools. 5 IDEs. 4 providers. One binary. The complete Go reimplementation of Claude Code.
+Full terminal UI. Multi-agent orchestration. Model fallback. 21 slash commands. Skills system. Plugin architecture. LSP integration. AST-grep.
 
 > **[Full Changelog →](CHANGELOG.md)**
 
 ---
 
-## Two Modes. One Binary.
+## Modes
 
 | Mode | What It Does | How You Use It |
 |------|-------------|----------------|
@@ -81,7 +93,7 @@ Full terminal UI. Multi-agent orchestration. Model fallback. 21 slash commands. 
 
 ## Supported Models
 
-Every model. Every provider. One binary. We don't lock you in.
+Every model. Every provider. One binary. No lock-in.
 
 **4 native providers. 7 proxy services. Local inference. 200+ models.** Set one env var and go.
 
@@ -119,9 +131,6 @@ gocode chat --model openai/gpt-4o                         # GPT-4o
 gocode chat --model anthropic/claude-sonnet-4-20250514    # Claude Sonnet
 gocode chat --model google/gemini-2.5-pro-preview         # Gemini
 gocode chat --model x-ai/grok-3                           # Grok
-gocode chat --model moonshotai/kimi-k2                    # Kimi K2
-gocode chat --model minimax/minimax-01                    # MiniMax
-gocode chat --model qwen/qwen-2.5-72b-instruct           # Qwen
 gocode chat --model deepseek/deepseek-chat                # DeepSeek
 gocode chat --model meta-llama/llama-3.3-70b-instruct     # Llama
 gocode chat --model mistralai/mistral-large-latest        # Mistral
@@ -133,14 +142,93 @@ One binary. One key. Every model on the planet. Get your key at [openrouter.ai/k
 
 ---
 
+## The Full Feature Set
+
+### Multi-Agent Orchestration
+- 4 built-in sub-agent profiles: coordinator, deep-worker, planner, debugger
+- Up to 5 concurrent background agents with independent contexts
+- Agent-to-agent messaging via swarm coordination
+- Category-based model routing (deep/quick/visual/ultrabrain)
+- Automatic model fallback on rate limits and server errors
+
+### Planning & Strategy
+- `/plan` — interview-style planning sessions
+- `/ultraplan` — deep planning with strongest available model (background, 30min timeout)
+- Structured plan output with scope analysis and step-by-step blueprints
+
+### Memory & Persistence
+- Cross-session memory with 3 scopes and team sync
+- Dream system — autonomous memory consolidation (orient → gather → consolidate → prune)
+- Session persistence and resume (`-c` / `-r` flags)
+- Memory aging and relevance-based pruning
+
+### IDE-Level Tools
+- LSP integration — real renames, go-to-definition, find-references, diagnostics
+- AST-grep — structural code search and rewrite (Go, JS, TS, Python)
+- Hash-anchored file I/O — CRC32 line hashes prevent stale edits
+- Auto-format on save (gofmt, prettier, black, rustfmt)
+
+### IDE Bridge
+- WebSocket server for bidirectional IDE communication
+- Works with VS Code, Cursor, Kiro, Antigravity
+- Permission forwarding and real-time response streaming
+- Multiple concurrent IDE connections
+
+### Terminal UI
+- Full bubbletea TUI with split panels (chat + git diff viewer)
+- 4 built-in themes: golang, monokai, dracula, nord
+- Custom themes via `.gocode/theme.json`
+- Custom keybinds via `.gocode/keybinds.json`
+- Vim keybindings — full normal/insert/visual modes with motions, operators, text objects
+
+### MCP Server & Client
+- Full MCP protocol compliance (server mode for IDEs)
+- MCP client — connect to external MCP servers for extended capabilities
+- 14+ built-in tools
+- Dual transport: stdio and HTTP
+
+### Skills System
+- 16 built-in skills (see below)
+- Custom skills via `.gocode/skills/` JSON files
+- Mid-session skill switching with `/skill`
+- Skills with MCP server configs auto-start child processes
+
+### Scheduling & Automation
+- Cron scheduler with 5-field expressions
+- Background agent execution on schedule
+- Persistent schedules in `.gocode/cron.json`
+- GitHub Actions integration (`gocode-action` for PR review and issue implementation)
+
+### Session & Git
+- Git checkpoints with `/undo N` and per-session refs
+- Git worktree tools for parallel branch work
+- `/diff` — see changes made this session
+- `/review` — agent self-reviews its own changes
+- `/commit` — auto-generated commit messages
+
+### More
+- PDF reading (text extraction, 50MB limit, pure Go)
+- Web search (DuckDuckGo, no API key needed)
+- Web fetch (URL content extraction)
+- Structured JSON output with `--output-format json` and `--output-schema`
+- Output styles (concise, verbose, markdown, minimal) + custom styles
+- Notebook editing (Jupyter .ipynb cell-level operations)
+- Tmux persistent terminal sessions
+- Plugin system with hook pipeline
+- Migrations system for automatic config upgrades
+- 25+ slash commands
+- 23 CLI subcommands
+
+---
+
 ## Skills — Expertise on Demand
 
-Coding agents are generalists. Skills change that. One flag, and your agent becomes a specialist.
+One flag, and your agent becomes a specialist.
 
 ```bash
 gocode chat --skill golang-best-practices    # writes Go like a senior engineer
 gocode chat --skill nothing-design           # designs like Teenage Engineering
-gocode chat --skill clone-website            # reverse-engineers websites
+gocode chat --skill loop                     # autonomous keep-going mode
 ```
 
 ### 16 Built-in Skills
@@ -237,7 +325,6 @@ sudo mv gocode /usr/local/bin/
 
 ```bash
 gocode --version
-# gocode version v0.8.0
 ```
 
 ---
@@ -248,7 +335,7 @@ gocode --version
 # 1. Install
 go install github.com/AlleyBo55/gocode/cmd/gocode@latest
 
-# 2. Set your API key
+# 2. Set your API key (pick any provider)
 export ANTHROPIC_API_KEY=sk-ant-...
 
 # 3. Chat
@@ -262,57 +349,38 @@ No Python. No Node. No virtual environments. One binary, one env var, go.
 
 ---
 
-## The Numbers
+## Architecture
 
-| Metric | Claude Code (Node.js) | gocode (Go) |
-|--------|----------------------|-------------|
-| Startup time | ~200ms | **<10ms** (20× faster) |
-| Binary size | ~180MB (node_modules) | **~12MB** (single file) |
-| Runtime dependencies | Node.js 18+, npm | **None** |
-| LLM providers | Claude only | **200+ models, 11 providers** |
-| Deployment | `npm install -g` | **Copy one file** |
-| Concurrency | Node.js async/await | **Goroutines + channels** |
-| MCP support | Yes (client + server) | **Yes (client + server)** |
-| IDE integrations | VS Code, JetBrains, Web, Desktop | **5 IDEs via MCP** |
-| Multi-agent / subagents | Yes (AgentTool, TaskTools) | **Yes (4 profiles, 5 concurrent)** |
-| Model fallback | No | **Yes (automatic failover)** |
-| Skills system | Yes (bundled + custom) | **Yes (16 built-in + custom)** |
-| Custom slash commands | Yes (markdown files) | **Yes (markdown files, YAML frontmatter)** |
-| Hooks (lifecycle) | Yes (shell scripts, JSON output) | **Yes (shell scripts, JSON output, PreToolUse/PostToolUse)** |
-| Web search | Yes (WebSearchTool, WebFetchTool) | **Yes (built-in, no API key)** |
-| Persistent memory | Yes (memdir, team sync, aging) | **Yes (memdir, 3 scopes, aging, team sync)** |
-| Git checkpoints / rewind | Yes (/rewind) | **Yes (/undo N, per-session refs)** |
-| Git worktree tools | Yes (EnterWorktreeTool) | **Yes (Enter/Exit tools, /worktree commands)** |
-| Voice input | Yes (/voice, STT) | Partial (/voice toggle, STT interface ready) |
-| Task management tools | Yes (6 task tools) | **Yes (6 task tools, background agents)** |
-| Notebook editing | Yes (NotebookEditTool) | **Yes (cell-level edit/add/remove/reorder)** |
-| GitHub Actions | Yes (claude-code-action) | **Yes (gocode-action, PR review, issue impl)** |
-| Structured output / SDK | Yes (Agent SDK) | **Yes (--output-format json, --output-schema)** |
-| Session continue (-c) | Yes | **Yes (-c / -r flags, directory-scoped)** |
-| Vim keybindings | Yes (/vim) | **Yes (/vim toggle, full normal/insert/visual modes)** |
-| ULTRAPLAN deep planning | Yes | **Yes (/ultraplan, background Opus agent, 30min timeout)** |
-| Dream system (memory consolidation) | Yes | **Yes (orient→gather→consolidate→prune cycle)** |
-| Cron/scheduled tasks | Yes | **Yes (5-field cron, background agent execution)** |
-| Bridge/IDE integration | Yes | **Yes (WebSocket server, bidirectional IDE comms)** |
-| Swarm coordination | Yes | **Yes (agent-to-agent messaging, discovery registry)** |
-| PDF handling | Yes | **Yes (text extraction, page separators, 50MB limit)** |
-| Output styles | Yes | **Yes (concise, verbose, markdown, minimal)** |
-| Migrations system | Yes | **Yes (auto-upgrade config/data on startup)** |
-| Buddy system (companion) | Yes | **Yes (18 species, 5 rarities, deterministic gacha)** |
-| Loop skill | Yes | **Yes (autonomous keep-going mode)** |
-| Stuck skill | Yes | **Yes (structured recovery from confused state)** |
-| Debug skill | Yes | **Yes (structured troubleshooting methodology)** |
-| Verify skill | Yes | **Yes (double-check work against requirements)** |
-| Simplify skill | Yes | **Yes (3-agent parallel code review)** |
-| Remember skill | Yes | **Yes (active memory persistence across sessions)** |
-| Skillify skill | Yes | **Yes (meta-skill: capture workflow as reusable skill)** |
-| Batch skill | Yes | **Yes (parallel work across worktree agents)** |
-| Multi-model support | No (Claude only) | **Yes (200+ models, 11 providers)** |
-| Category-based routing | No | **Yes (deep/quick/visual/ultrabrain)** |
-| Hash-anchored file I/O | No | **Yes (CRC32 line hashes)** |
-| AST-grep integration | No | **Yes (structural code search)** |
-| Tmux sessions | No | **Yes (persistent terminal sessions)** |
-| TUI mode | No (Ink-based terminal UI) | **Yes (bubbletea split panels, themes)** |
+26 internal packages. Clean interfaces. Zero external runtime dependencies. Goroutines and channels for native concurrency. `go:embed` for compiled-in registries. Atomic file writes for zero-corruption session persistence.
+
+```
+gocode/
+├── cmd/gocode/          # CLI entrypoint — 23 subcommands
+├── data/                # Embedded command/tool registries
+├── internal/
+│   ├── agent/           # ConversationRuntime, ToolExecutor, permissions, hooks
+│   ├── apiclient/       # Provider interface, Anthropic/OpenAI/Gemini/xAI/proxy providers
+│   ├── orchestrator/    # Multi-agent orchestration, background agents
+│   ├── swarm/           # Agent-to-agent messaging, discovery registry
+│   ├── ultraplan/       # Deep planning with strongest model
+│   ├── dream/           # Autonomous memory consolidation
+│   ├── lsp/             # Language Server Protocol integration
+│   ├── astgrep/         # Structural code search
+│   ├── bridge/          # WebSocket IDE bridge
+│   ├── mcp/             # MCP server (full protocol)
+│   ├── mcpclient/       # MCP client (external servers)
+│   ├── tui/             # Bubbletea terminal UI
+│   ├── repl/            # Interactive REPL
+│   ├── vim/             # Vim keybinding engine
+│   ├── skills/          # Skills system
+│   ├── cron/            # Cron scheduler
+│   ├── session/         # Session persistence
+│   ├── memory/          # Persistent memory
+│   ├── buddy/           # Terminal companion system
+│   └── ...              # 6 more packages
+```
+
+> **[Full Architecture Guide →](docs/architecture.md)**
 
 ---
 
@@ -331,6 +399,52 @@ No Python. No Node. No virtual environments. One binary, one env var, go.
 
 ---
 
+## gocode vs Claude Code
+
+gocode is inspired by Claude Code but built from scratch with a different architecture, different language, and a broader vision. Here's how they compare:
+
+| Metric | Claude Code (Node.js) | gocode (Go) |
+|--------|----------------------|-------------|
+| Startup time | ~200ms | **<10ms** |
+| Binary size | ~180MB (node_modules) | **~12MB** (single file) |
+| Runtime dependencies | Node.js 18+, npm | **None** |
+| LLM providers | Claude only | **200+ models, 11 providers** |
+| Deployment | `npm install -g` | **Copy one file** |
+| Concurrency | Node.js async/await | **Goroutines + channels** |
+| MCP support | Yes (client + server) | **Yes (client + server)** |
+| IDE integrations | VS Code, JetBrains, Web, Desktop | **5 IDEs via MCP** |
+| Multi-agent / subagents | Yes | **Yes (4 profiles, 5 concurrent)** |
+| Model fallback | No | **Yes (automatic failover)** |
+| Skills system | Yes | **Yes (16 built-in + custom)** |
+| Custom slash commands | Yes | **Yes** |
+| Hooks (lifecycle) | Yes | **Yes** |
+| Web search | Yes | **Yes (built-in, no API key)** |
+| Persistent memory | Yes | **Yes (3 scopes, aging, team sync)** |
+| Git checkpoints / rewind | Yes | **Yes (/undo N, per-session refs)** |
+| Git worktree tools | Yes | **Yes** |
+| Task management tools | Yes | **Yes (+ background agents)** |
+| Notebook editing | Yes | **Yes** |
+| GitHub Actions | Yes | **Yes (gocode-action)** |
+| Structured output | Yes | **Yes (--output-format json, --output-schema)** |
+| Session continue | Yes | **Yes (-c / -r flags)** |
+| Vim keybindings | Yes | **Yes (full normal/insert/visual modes)** |
+| Deep planning | Yes | **Yes (/ultraplan, background, 30min timeout)** |
+| Dream system | Yes | **Yes (orient→gather→consolidate→prune)** |
+| Cron/scheduled tasks | Yes | **Yes (5-field cron, background agents)** |
+| IDE bridge | Yes | **Yes (WebSocket, bidirectional)** |
+| Swarm coordination | Yes | **Yes (agent-to-agent messaging)** |
+| PDF handling | Yes | **Yes (50MB limit, pure Go)** |
+| Output styles | Yes | **Yes (4 built-in + custom)** |
+| Buddy system | No | **Yes (18 species, deterministic gacha)** |
+| Multi-model support | No (Claude only) | **Yes (200+ models, 11 providers)** |
+| Category-based routing | No | **Yes (deep/quick/visual/ultrabrain)** |
+| Hash-anchored file I/O | No | **Yes (CRC32 line hashes)** |
+| AST-grep integration | No | **Yes (structural code search)** |
+| Tmux sessions | No | **Yes (persistent terminal sessions)** |
+| TUI mode | No | **Yes (bubbletea split panels, themes)** |
+
+---
+
 ## Contributing
 
 ```bash
@@ -341,9 +455,15 @@ make test && make build
 
 ---
 
-## Search Keywords
+## The Buddy System
 
-`claude code go` · `claude code golang` · `claude code alternative` · `claude code open source` · `ai coding agent go` · `go ai agent` · `mcp server go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `claude code go port` · `fast ai agent go` · `single binary ai agent` · `multi model ai agent` · `multi agent orchestration go` · `deepseek coding agent` · `groq fast inference agent` · `ollama coding agent` · `local llm coding agent` · `200 models ai agent` · `openai compatible agent` · `claude code replacement` · `ai pair programmer terminal`
+One more thing. gocode comes with a terminal companion. 18 species across 5 rarity tiers. Deterministic gacha seeded from your user ID. Tracks DEBUGGING, CHAOS, and SNARK stats. Displays ASCII sprites in your REPL banner.
+
+Because even an AI agent deserves a friend.
+
+```
+you> /buddy
+```
 
 ---
 
@@ -353,13 +473,19 @@ MIT — use it, fork it, ship it.
 
 ---
 
+## Search Keywords
+
+`claude code alternative` · `claude code replacement` · `claude code open source` · `open source claude code` · `ai coding agent go` · `go ai agent` · `mcp server go` · `cursor mcp server go` · `kiro mcp server` · `vscode mcp server golang` · `fast ai agent go` · `single binary ai agent` · `multi model ai agent` · `multi agent orchestration go` · `deepseek coding agent` · `groq fast inference agent` · `ollama coding agent` · `local llm coding agent` · `200 models ai agent` · `openai compatible agent` · `ai pair programmer terminal` · `terminal coding agent golang` · `claude code but faster` · `claude code go alternative`
+
+---
+
 <p align="center">
-  <em>"The people who are crazy enough to think they can change the world are the ones who do."</em>
+  <em>Built from scratch. Built in Go. Built to be fast, open, and yours.</em>
 </p>
 
 <p align="center">
-  <strong>gocode — the Go version of Claude Code. Now a multi-agent operating system.</strong><br/>
-  One binary. Zero dependencies. Instant startup. Any LLM. A team of agents.
+  <strong>gocode — the open-source Claude Code alternative. 200+ models. Multi-agent. Instant startup.</strong><br/>
+  One binary. Zero dependencies. Any LLM. A team of agents.
 </p>
 
 <p align="center">
