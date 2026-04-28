@@ -3,4 +3,3 @@ dist/
 .port_sessions/
 *.tmp
 .DS_Store
-.kiro/specs/
