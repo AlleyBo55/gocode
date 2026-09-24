@@ -1,0 +1,3 @@
+{
+  "prompt": "SumCSV in sumcsv.go is documented to return an error when any field is not an integer, but it never does: bad fields are silently skipped and the returned error is always nil. Fix it so that a non-integer field makes SumCSV return an error whose message includes the offending field text, and the sum is returned only when every field parsed. Fields may have surrounding spaces."
+}

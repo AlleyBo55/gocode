@@ -182,9 +182,13 @@ func DetectProviderKind(model string) ProviderKind {
 	if strings.HasPrefix(resolved, "claude") {
 		return ProviderAnthropic
 	}
+	// Codex models share OpenAI's wire format but resolve credentials from the
+	// Codex CLI's cache as well as OPENAI_API_KEY, and honour CODEX_BASE_URL.
+	if strings.HasPrefix(resolved, "codex") {
+		return ProviderCodex
+	}
 	if strings.HasPrefix(resolved, "gpt") || strings.HasPrefix(resolved, "o1") ||
-		strings.HasPrefix(resolved, "o3") || strings.HasPrefix(resolved, "o4") ||
-		strings.HasPrefix(resolved, "codex") || strings.HasPrefix(resolved, "gpt-5") {
+		strings.HasPrefix(resolved, "o3") || strings.HasPrefix(resolved, "o4") {
 		return ProviderOpenAi
 	}
 	if strings.HasPrefix(resolved, "gemini") {

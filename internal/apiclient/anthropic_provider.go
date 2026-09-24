@@ -80,29 +80,28 @@ func (p *AnthropicProvider) StreamMessage(ctx context.Context, req apitypes.Mess
 			n, readErr := resp.Body.Read(buf)
 			if n > 0 {
 				events, parseErr := parser.Push(buf[:n])
-				if parseErr != nil {
+				// Events parsed before a bad frame are still good; forward them
+				// before reporting the frame that failed.
+				if !forwardEvents(ctx, ch, events) {
 					return
 				}
-				for _, ev := range events {
-					select {
-					case ch <- ev:
-					case <-ctx.Done():
-						return
-					}
+				if parseErr != nil {
+					forwardEvents(ctx, ch, []apitypes.StreamEvent{streamErrorEvent(parseErr)})
+					return
 				}
 			}
 			if readErr != nil {
-				if readErr != io.EOF {
-					// Stream interrupted
+				events, finishErr := parser.Finish()
+				if !forwardEvents(ctx, ch, events) {
+					return
 				}
-				// Flush remaining
-				events, _ := parser.Finish()
-				for _, ev := range events {
-					select {
-					case ch <- ev:
-					case <-ctx.Done():
-						return
-					}
+				if finishErr != nil {
+					forwardEvents(ctx, ch, []apitypes.StreamEvent{streamErrorEvent(finishErr)})
+				} else if readErr != io.EOF {
+					// The connection dropped mid-message. Without this event the
+					// consumer sees a clean close and treats the partial reply as
+					// complete.
+					forwardEvents(ctx, ch, []apitypes.StreamEvent{streamErrorEvent(apitypes.WrapIo(readErr))})
 				}
 				return
 			}
@@ -148,7 +147,7 @@ func (p *AnthropicProvider) sendWithRetry(ctx context.Context, req apitypes.Mess
 }
 
 func (p *AnthropicProvider) sendRaw(ctx context.Context, req apitypes.MessageRequest) (*http.Response, error) {
-	body, err := json.Marshal(req)
+	body, err := json.Marshal(anthropicWireRequest(req, promptCacheEnabled()))
 	if err != nil {
 		return nil, apitypes.WrapJson(err)
 	}
@@ -181,9 +180,12 @@ func readApiError(resp *http.Response) *apitypes.ApiError {
 	var envelope struct {
 		Error struct {
 			Type    string `json:"type"`
+			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(body, &envelope)
-	return apitypes.NewApiError(resp.StatusCode, envelope.Error.Type, envelope.Error.Message, string(body))
+	apiErr := apitypes.NewApiError(resp.StatusCode, envelope.Error.Type, envelope.Error.Message, string(body))
+	apiErr.Code = envelope.Error.Code
+	return apiErr
 }

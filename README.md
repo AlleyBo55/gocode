@@ -20,11 +20,49 @@
   <img src="assets/screen1.png" alt="gocode terminal screenshot" width="700" />
 </p>
 
-<h3 align="center">One binary. Zero dependencies. 200+ models. A team of agents.<br/>Inspired by the best terminal AI agents. Built from scratch in Go. Faster than everything else.</h3>
+<h3 align="center">One binary. Zero dependencies. Any model, including the one on your laptop.<br/>A 12 MB Go binary that starts in milliseconds and tells you what each model actually costs.</h3>
 
 <p align="center">
   <code>go install github.com/AlleyBo55/gocode/cmd/gocode@latest</code>
 </p>
+
+---
+
+## Start in 60 seconds
+
+Pick the path that matches what you have. Each one is a single command away
+from a working agent.
+
+**Nothing. No account, no key.** Install [Ollama](https://ollama.com), then:
+
+```bash
+ollama pull qwen2.5-coder:7b
+gocode                      # finds Ollama, uses your local model, says so
+```
+
+**One key for every hosted model.** Get one at [openrouter.ai/keys](https://openrouter.ai/keys):
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+gocode --model anthropic/claude-sonnet-4-6
+```
+
+**A provider key you already have:**
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, ...
+gocode
+```
+
+Then two commands worth knowing before you trust a model with your code:
+
+```bash
+gocode doctor --model qwen2.5-coder:7b   # can it stream, follow a system prompt, call tools, call several at once?
+gocode chat --max-cost 2                 # hard stop at $2 of estimated spend, before the next tool runs
+```
+
+If you type `gocode` with nothing set up, it prints exactly these three paths
+instead of an error.
 
 ---
 
@@ -60,9 +98,26 @@ Real LSP integration (actual renames, actual go-to-definition — not regex). AS
 
 Under 10ms startup. 12MB binary. No runtime dependencies. No Python. No Node. No virtual environments. `go install` and you're done.
 
+### Cheap Where It Counts
+
+The fixed part of every request is small: about 1,700 tokens of system prompt plus twelve tool schemas. On Anthropic that prefix and the conversation so far are prompt-cached, so a 30-turn tool loop pays full price for them once, not thirty times. Tool output is capped at 40 KB per call and file reads are paged, so one stray `cat` cannot flood the context. `/cost` shows the split per model, cache reads included, and `--max-cost` puts a ceiling on a session in dollars.
+
 ---
 
 ## What's New
+
+### v0.10.0 — the any-model release has to actually work with any model
+
+No new parity rows. The provider layer, the permission boundary, and the agent
+loop got their first tests, and what the tests found got fixed: streams that
+broke mid-reply were being recorded as complete, fallback never fired for rate
+limits, streamed token counts were zero, and a trusted `git *` approved
+`git status; rm -rf /`. New: a loop guard that stops a model repeating the same
+failing tool call, `--max-cost` for unattended runs, a per-model cost ledger
+behind `/cost`, `gocode doctor --model X` to probe what a model can do, zero-config
+local models through Ollama or LM Studio, and an opt-in eval harness under
+`evals/` that scores gocode per model on real tasks. Details in the
+[changelog](CHANGELOG.md).
 
 ### v0.9.0 — One More Thing.
 
@@ -109,14 +164,14 @@ Every model. Every provider. One binary. No lock-in.
 | **Together AI** | Llama 405B, Qwen 72B Turbo | `TOGETHER_API_KEY` |
 | **OpenRouter** | 200+ models, one API key | `OPENROUTER_API_KEY` |
 | **Azure OpenAI** | Enterprise GPT deployments | `AZURE_OPENAI_API_KEY` |
-| **Local (Ollama/LM Studio)** | Run any model on your machine | `OPENAI_BASE_URL` |
+| **Local (Ollama/LM Studio)** | Run any model on your machine; detected automatically | none (`OLLAMA_HOST` for a non-default address) |
 
 ```bash
 gocode chat --model sonnet          # Claude
 gocode chat --model gpt5            # GPT-5.4
 gocode chat --model deepseek        # DeepSeek
 gocode chat --model groq-llama      # Llama on Groq (800 tok/s)
-gocode chat --model llama           # Ollama local
+gocode chat --model qwen2.5-coder:7b   # any model installed in Ollama, no key, no config
 gocode chat --goal coding           # auto-pick the best coding model
 ```
 
@@ -147,7 +202,7 @@ One binary. One key. Every model on the planet. Get your key at [openrouter.ai/k
 ### Multi-Agent Orchestration
 - 4 built-in sub-agent profiles: coordinator, deep-worker, planner, debugger
 - Up to 5 concurrent background agents with independent contexts
-- Agent-to-agent messaging via swarm coordination
+- Agent-to-agent messaging: every spawned agent joins the swarm under its own name, can message `main` or a sibling with `send_agent_message`, sees `list_agents`, and reads its inbox at the start of each turn; background agents report their result to `main` when they finish
 - Category-based model routing (deep/quick/visual/ultrabrain)
 - Automatic model fallback on rate limits and server errors
 
@@ -432,7 +487,7 @@ gocode is inspired by Claude Code but built from scratch with a different archit
 | Dream system | Yes | **Yes (orient→gather→consolidate→prune)** |
 | Cron/scheduled tasks | Yes | **Yes (5-field cron, background agents)** |
 | IDE bridge | Yes | **Yes (WebSocket, bidirectional)** |
-| Swarm coordination | Yes | **Yes (agent-to-agent messaging)** |
+| Swarm coordination | Yes | **Yes (named agents, inbox per turn, background agents report to main)** |
 | PDF handling | Yes | **Yes (50MB limit, pure Go)** |
 | Output styles | Yes | **Yes (4 built-in + custom)** |
 | Buddy system | No | **Yes (18 species, deterministic gacha)** |

@@ -1,0 +1,4 @@
+{
+  "prompt": "Counter in counter.go is used from many goroutines at once and has a data race: concurrent Inc calls lose updates and `go test -race` reports the race. Make Counter safe for concurrent use without changing its exported API (NewCounter, Inc, Add, Value).",
+  "test_args": ["-race"]
+}

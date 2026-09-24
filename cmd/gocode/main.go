@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -30,6 +31,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/commandgraph"
 	"github.com/AlleyBo55/gocode/internal/commands"
 	"github.com/AlleyBo55/gocode/internal/cron"
+	"github.com/AlleyBo55/gocode/internal/doctor"
 	"github.com/AlleyBo55/gocode/internal/editorcompat"
 	"github.com/AlleyBo55/gocode/internal/execution"
 	"github.com/AlleyBo55/gocode/internal/hashline"
@@ -60,7 +62,75 @@ import (
 	"github.com/AlleyBo55/gocode/internal/worktree"
 )
 
-var version = "v0.9.0"
+var version = "v0.10.0"
+
+// defaultToLocalModel makes `gocode` work with nothing configured. When the
+// user did not choose a model, has no provider credentials, and a local
+// server has models installed, the best local model is used and the choice
+// is printed so it is never a surprise. An explicit --model or --goal, or any
+// configured key, leaves the default alone.
+func defaultToLocalModel(cmd *cobra.Command, model string) string {
+	if cmd.Flags().Changed("model") || cmd.Flags().Changed("goal") || apiclient.HasAnyProviderCredentials() {
+		return model
+	}
+	local, ok := apiclient.DetectLocalServer()
+	if !ok {
+		return model
+	}
+	suggested := apiclient.SuggestLocalModel(local.Models)
+	if suggested == "" {
+		return model
+	}
+	fmt.Fprintf(os.Stderr, "No API keys set; using %s from %s at %s. Pass --model to choose.\n", suggested, local.Name, local.BaseURL)
+	return suggested
+}
+
+// onboardOrError turns a missing-credentials failure into the get-started
+// guide, and leaves every other error alone.
+func onboardOrError(cmd *cobra.Command, model string, err error) error {
+	var apiErr *apitypes.ApiError
+	if !errors.As(err, &apiErr) || apiErr.Kind != apitypes.ErrMissingCredentials {
+		return fmt.Errorf("resolving provider: %w", err)
+	}
+	local, found := apiclient.DetectLocalServer()
+	fmt.Fprint(os.Stderr, repl.MissingCredentialsHelp(model, err, local, found))
+	// The guide is the whole message. Cobra reports errors on the command it
+	// executed, which for bare `gocode` is the root, so silence both.
+	for _, c := range []*cobra.Command{cmd, cmd.Root()} {
+		c.SilenceUsage = true
+		c.SilenceErrors = true
+	}
+	return err
+}
+
+// warnIfUnbudgetable tells the user when --max-cost cannot be enforced. The
+// budget is computed from the price table, so a model with no entry would
+// otherwise run unlimited while the flag suggests it is capped. Warnings go
+// to stderr so --output-format json stays parseable.
+func warnIfUnbudgetable(model string, maxCost float64) {
+	if maxCost <= 0 {
+		return
+	}
+	if _, ok := apiclient.PriceForModel(model); !ok {
+		fmt.Fprintf(os.Stderr, "warning: --max-cost %.2f cannot be enforced: no price data for %s (see internal/apiclient/pricing.go)\n", maxCost, model)
+	}
+}
+
+// warnFromCapabilityProbe surfaces a cached `gocode doctor --model` result
+// that predicts trouble for this session, before the first request is made.
+func warnFromCapabilityProbe(model string) {
+	report, ok := doctor.NewStore("").Get(model)
+	if !ok {
+		return
+	}
+	if supported, known := report.Supports(doctor.CheckToolCall); known && !supported {
+		fmt.Fprintf(os.Stderr, "warning: %s failed the tool-call probe on %s; the agent will not be able to read or edit files. Run `gocode doctor --model %s --refresh` to re-check.\n",
+			model, report.ProbedAt.Local().Format("2006-01-02"), model)
+	}
+	if supported, known := report.Supports(doctor.CheckSystemPrompt); known && !supported {
+		fmt.Fprintf(os.Stderr, "warning: %s ignored the system prompt when probed; tool instructions may not be followed.\n", model)
+	}
+}
 
 // isTerminal checks if stdout is a terminal (not piped).
 func isTerminal() bool {
@@ -198,9 +268,22 @@ func main() {
 	}
 
 	rootCmd := &cobra.Command{
-		Use:     "gocode",
-		Short:   "gocode agent harness runtime (Go port)",
+		Use:   "gocode",
+		Short: "An AI coding agent for your terminal that works with any model",
+		Long: `gocode is an AI coding agent for your terminal. One binary, any model:
+Claude, GPT, Gemini, Grok, DeepSeek, Mistral, or anything running locally in
+Ollama or LM Studio.
+
+Start in one command:
+
+  gocode                                   chat, using whatever is configured
+  gocode --model qwen2.5-coder:7b          a local Ollama model, no API key needed
+  gocode prompt "explain this repo"        one answer, then exit
+
+With no API key set and Ollama running, gocode uses your local model and says
+so. With nothing set up at all, it prints three ways to get started.`,
 		Version: version,
+		Args:    cobra.NoArgs,
 	}
 
 	// 1. summary
@@ -668,9 +751,10 @@ func main() {
 				repl.SkipProjectConfig = true
 			}
 
+			model = defaultToLocalModel(cmd, model)
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
-				return fmt.Errorf("resolving provider: %w", err)
+				return onboardOrError(cmd, model, err)
 			}
 
 			// After resolving the model, set model-aware max tokens if user didn't override
@@ -709,9 +793,13 @@ func main() {
 			cron.RegisterCronTool(toolImpl, cronScheduler, cronDataDir)
 			defer cronScheduler.StopAll()
 
-			// Swarm: create manager and register send_agent_message tool
+			// Swarm: the interactive session is agent "main". Sub-agents spawned
+			// by the orchestrator join under their own names, can message main
+			// and each other, and background agents report back to main's inbox.
 			swarmMgr := swarm.NewSwarmManager(10)
-			swarm.RegisterSwarmTool(toolImpl, swarmMgr, "main")
+			_ = swarmMgr.Register(swarm.MainAgent, nil, "main")
+			orch.WithSwarm(swarmMgr)
+			mainExec := swarm.WrapExecutor(executor, swarmMgr, swarm.MainAgent)
 
 			// Phase 2: load skills on startup
 			skillLoader := skills.NewSkillLoader("")
@@ -720,7 +808,7 @@ func main() {
 				log.Printf("[skills] %v", e)
 			}
 
-			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
+			systemPrompt := repl.BuildSystemPrompt(mainExec.ListTools())
 
 			// If --skill flag is provided, prepend the skill's system prompt
 			if skillName != "" {
@@ -781,9 +869,14 @@ func main() {
 				}
 			}
 
+			maxCost, _ := cmd.Flags().GetFloat64("max-cost")
+			warnIfUnbudgetable(resolvedModel, maxCost)
+			warnFromCapabilityProbe(resolvedModel)
+
 			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
 				Provider:      fp,
-				Executor:      executor,
+				Executor:      mainExec,
+				Inbox:         swarmMgr.InboxFor(swarm.MainAgent),
 				Model:         resolvedModel,
 				MaxTokens:     maxTokens,
 				MaxIterations: maxTurns,
@@ -793,6 +886,7 @@ func main() {
 				Trusted:       trustedStore,
 				ToolCb:        toolCb,
 				Hooks:         hooksRunner,
+				MaxCostUSD:    maxCost,
 			})
 
 			// Phase 1: wrap runtime with SessionRecoveryManager
@@ -843,6 +937,7 @@ func main() {
 	chatCmd.Flags().String("goal", "", "Goal-based model selection: coding, latency, balanced")
 	chatCmd.Flags().Int("max-turns", 30, "Maximum agent loop iterations")
 	chatCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
+	chatCmd.Flags().Float64("max-cost", 0, "Stop when the session's estimated cost reaches this many USD (0 = unlimited)")
 	chatCmd.Flags().String("api-key", "", "API key (overrides env vars)")
 	chatCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
 	chatCmd.Flags().String("skill", "", "Activate a skill by name (prepends skill system prompt)")
@@ -924,8 +1019,15 @@ func main() {
 	// --- doctor CLI command ---
 	doctorCmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Check environment and dependencies",
-		Run: func(cmd *cobra.Command, args []string) {
+		Short: "Check environment and dependencies; with --model, probe what a model can do",
+		Long: `Check environment and dependencies.
+
+With --model, also probe the model through gocode's provider layer: can it
+stream, does it honour a system prompt, can it call a tool, and will it call
+several tools in one turn. The probe makes four small requests (a few hundred
+tokens) and caches the result in .gocode/capabilities.json, so it costs tokens
+once per model. Pass --refresh to probe again.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Checking environment...")
 			checks := []struct{ name, cmd string }{
 				{"git", "git --version"},
@@ -967,8 +1069,39 @@ func main() {
 			if _, err := os.Stat(profiles.DefaultProfilePath()); err == nil {
 				fmt.Printf("  ✓ Profile: %s found\n", profiles.DefaultProfilePath())
 			}
+
+			model, _ := cmd.Flags().GetString("model")
+			if model == "" {
+				return nil
+			}
+			apiKey, _ := cmd.Flags().GetString("api-key")
+			refresh, _ := cmd.Flags().GetBool("refresh")
+
+			fmt.Println()
+			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
+			if err != nil {
+				return fmt.Errorf("resolving provider for %s: %w", model, err)
+			}
+			store := doctor.NewStore("")
+			if !refresh {
+				if cached, ok := store.Get(resolvedModel); ok {
+					fmt.Println(cached.Render())
+					fmt.Printf("\n(cached in %s; pass --refresh to probe again)\n", store.Path())
+					return nil
+				}
+			}
+			fmt.Printf("Probing %s with 4 small requests...\n", resolvedModel)
+			report := doctor.Prober{Provider: provider, Model: resolvedModel}.Run(context.Background())
+			fmt.Println(report.Render())
+			if err := store.Put(report); err != nil {
+				fmt.Printf("\n(could not cache result: %v)\n", err)
+			}
+			return nil
 		},
 	}
+	doctorCmd.Flags().String("model", "", "Probe this model's capabilities (streaming, system prompt, tool calls, parallel tool calls)")
+	doctorCmd.Flags().String("api-key", "", "API key for the probe (overrides env vars)")
+	doctorCmd.Flags().Bool("refresh", false, "Ignore the cached probe result and probe again")
 	rootCmd.AddCommand(doctorCmd)
 
 	// --- smoke — quick runtime smoke test ---
@@ -1067,9 +1200,10 @@ func main() {
 			outputFormat, _ := cmd.Flags().GetString("output-format")
 			outputSchema, _ := cmd.Flags().GetString("output-schema")
 
+			model = defaultToLocalModel(cmd, model)
 			provider, resolvedModel, err := apiclient.ResolveProvider(model, apiKey)
 			if err != nil {
-				return fmt.Errorf("resolving provider: %w", err)
+				return onboardOrError(cmd, model, err)
 			}
 
 			// After resolving the model, set model-aware max tokens if user didn't override
@@ -1095,6 +1229,13 @@ func main() {
 			toolImpl.Set("orchestrator_delegate", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate"})
 			toolImpl.Set("orchestrator_delegate_bg", &orchestratorToolAdapter{orch: orch, toolName: "orchestrator_delegate_bg"})
 
+			// Swarm, as in chat: one-shot runs can delegate too, and a background
+			// agent's report lands in main's inbox for the next turn.
+			swarmMgr := swarm.NewSwarmManager(10)
+			_ = swarmMgr.Register(swarm.MainAgent, nil, "main")
+			orch.WithSwarm(swarmMgr)
+			mainExec := swarm.WrapExecutor(executor, swarmMgr, swarm.MainAgent)
+
 			// Phase 2: load skills on startup
 			skillLoader := skills.NewSkillLoader("")
 			_, skillErrs := skillLoader.LoadAll()
@@ -1102,7 +1243,7 @@ func main() {
 				log.Printf("[skills] %v", e)
 			}
 
-			systemPrompt := repl.BuildSystemPrompt(executor.ListTools())
+			systemPrompt := repl.BuildSystemPrompt(mainExec.ListTools())
 
 			// If --skill flag is provided, prepend the skill's system prompt
 			if skillName != "" {
@@ -1122,15 +1263,21 @@ func main() {
 				log.Printf("[verbose] model=%s maxTurns=%d maxTokens=%d", resolvedModel, maxTurns, maxTokens)
 			}
 
+			maxCost, _ := cmd.Flags().GetFloat64("max-cost")
+			warnIfUnbudgetable(resolvedModel, maxCost)
+			warnFromCapabilityProbe(resolvedModel)
+
 			// Use FallbackProvider (which implements Provider) for the runtime
 			rt := agent.NewConversationRuntime(agent.RuntimeOptions{
 				Provider:      fp,
-				Executor:      executor,
+				Executor:      mainExec,
+				Inbox:         swarmMgr.InboxFor(swarm.MainAgent),
 				Model:         resolvedModel,
 				MaxTokens:     maxTokens,
 				MaxIterations: maxTurns,
 				SystemPrompt:  systemPrompt,
 				PermMode:      agent.DangerFullAccess,
+				MaxCostUSD:    maxCost,
 			})
 
 			// Phase 1: wrap runtime with SessionRecoveryManager
@@ -1156,9 +1303,7 @@ func main() {
 				}
 
 				usage := rt.GetUsage()
-				inputCostPer1M := 3.0
-				outputCostPer1M := 15.0
-				totalCost := float64(usage.InputTokens)/1_000_000*inputCostPer1M + float64(usage.OutputTokens)/1_000_000*outputCostPer1M
+				totalCost, _ := usage.Cost()
 
 				data, finalizeErr := writer.Finalize(resultText, structout.UsageSummary{
 					InputTokens:  usage.InputTokens,
@@ -1183,6 +1328,7 @@ func main() {
 	promptCmd.Flags().String("model", "sonnet", "Model name or alias")
 	promptCmd.Flags().Int("max-turns", 30, "Maximum agent loop iterations")
 	promptCmd.Flags().Int("max-tokens", 8192, "Maximum output tokens per request")
+	promptCmd.Flags().Float64("max-cost", 0, "Stop when the run's estimated cost reaches this many USD (0 = unlimited)")
 	promptCmd.Flags().String("api-key", "", "API key (overrides env vars)")
 	promptCmd.Flags().Bool("no-stream", false, "Disable streaming output")
 	promptCmd.Flags().Bool("hashline", false, "Enable hashline mode for hash-anchored file I/O")
@@ -1549,7 +1695,77 @@ func main() {
 	})
 	rootCmd.AddCommand(authCmd)
 
+	// Bare `gocode` in a terminal is the chat, the way every other agent CLI
+	// behaves. Piped or scripted, it prints help so nothing blocks on stdin.
+	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if isTerminal() && stdinIsTerminal() {
+			return chatCmd.RunE(chatCmd, nil)
+		}
+		return cmd.Help()
+	}
+	// --model on the root is a convenience for `gocode --model X`; it is the
+	// chat command's flag, so define it there and mirror the value across.
+	rootCmd.Flags().String("model", "sonnet", "Model name or alias, same as 'gocode chat --model'")
+	rootCmd.PreRun = func(cmd *cobra.Command, args []string) {
+		if cmd.Flags().Changed("model") {
+			v, _ := cmd.Flags().GetString("model")
+			_ = chatCmd.Flags().Set("model", v)
+		}
+	}
+
+	organizeHelp(rootCmd)
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// stdinIsTerminal reports whether stdin is an interactive terminal.
+func stdinIsTerminal() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// organizeHelp groups the commands a user reaches for and hides the ones
+// that exist for the porting harness and integration tests. Hidden commands
+// still run; they just stop crowding `gocode --help`.
+func organizeHelp(root *cobra.Command) {
+	groups := []struct {
+		id, title string
+		commands  []string
+	}{
+		{"agent", "Agent:", []string{"chat", "prompt"}},
+		{"integrations", "Servers and integrations:", []string{"mcp-serve", "serve", "bridge", "github", "pr", "plugin"}},
+		{"session", "Sessions and settings:", []string{"profile", "config", "auth", "stats", "export", "import"}},
+		{"diag", "Diagnostics:", []string{"doctor", "hardening", "smoke", "tools", "commands"}},
+	}
+	groupOf := map[string]string{}
+	for _, g := range groups {
+		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
+		for _, name := range g.commands {
+			groupOf[name] = g.id
+		}
+	}
+	// Internal: porting manifests, registry dumps, connection-mode reports,
+	// and low-level session plumbing. Kept runnable for scripts and tests.
+	hidden := map[string]bool{
+		"summary": true, "manifest": true, "parity-audit": true, "setup-report": true,
+		"command-graph": true, "tool-pool": true, "bootstrap-graph": true, "subsystems": true,
+		"route": true, "bootstrap": true, "turn-loop": true,
+		"flush-transcript": true, "load-session": true,
+		"remote-mode": true, "ssh-mode": true, "teleport-mode": true, "direct-connect": true, "deep-link": true,
+	}
+	for _, c := range root.Commands() {
+		if id, ok := groupOf[c.Name()]; ok {
+			c.GroupID = id
+		}
+		if hidden[c.Name()] {
+			c.Hidden = true
+		}
+	}
+	root.SetHelpCommandGroupID("diag")
+	root.SetCompletionCommandGroupID("diag")
 }

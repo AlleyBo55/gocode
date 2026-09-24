@@ -1,0 +1,3 @@
+{
+  "prompt": "MemStore in memstore.go is a stub: every method returns ErrNotImplemented. Implement it as an in-memory key/value store that satisfies the Store interface in store.go. Get must return ErrNotFound for a missing key, Delete must return ErrNotFound when nothing was deleted, and Keys must return the keys sorted."
+}

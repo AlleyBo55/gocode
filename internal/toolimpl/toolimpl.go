@@ -76,7 +76,55 @@ func (r *Registry) ExecuteTool(name, payload string) ToolResult {
 	if params == nil {
 		params = make(map[string]interface{})
 	}
-	return executor.Execute(params)
+	result := executor.Execute(params)
+	result.Output = TruncateOutput(name, result.Output)
+	return result
+}
+
+// MaxToolOutputBytes caps what one tool result may put into the model's
+// context. Beyond it the head and the tail are kept and the middle is
+// replaced by a marker: the tail is where test failures and stack traces
+// live, the head is where the model learns what it was looking at. The cap
+// is roughly 10k tokens, and it is paid again on every later turn, which is
+// why it is not larger.
+const MaxToolOutputBytes = 40_000
+
+// truncationHints tell the model how to get at the part it needs, per tool.
+var truncationHints = map[string]string{
+	"bashtool":     "Narrow the command (grep, head, tail, --quiet), or redirect output to a file and read the part you need.",
+	"filereadtool": "Use start_line and end_line to read a specific range.",
+	"greptool":     "Use a more specific pattern or an include filter.",
+	"globtool":     "Use a narrower pattern or path.",
+	"webfetchtool": "Fetch a more specific URL.",
+}
+
+// TruncateOutput bounds a tool result to MaxToolOutputBytes, preferring to
+// cut on line boundaries and telling the model what was dropped and how to
+// ask for it.
+func TruncateOutput(toolName, out string) string {
+	if len(out) <= MaxToolOutputBytes {
+		return out
+	}
+	headBudget := MaxToolOutputBytes * 2 / 3
+	tailBudget := MaxToolOutputBytes - headBudget
+
+	head := out[:headBudget]
+	if i := strings.LastIndexByte(head, '\n'); i > headBudget/2 {
+		head = head[:i+1]
+	}
+	tail := out[len(out)-tailBudget:]
+	if i := strings.IndexByte(tail, '\n'); i >= 0 && i < tailBudget/2 {
+		tail = tail[i+1:]
+	}
+	omitted := out[len(head) : len(out)-len(tail)]
+
+	hint := truncationHints[strings.ToLower(toolName)]
+	if hint != "" {
+		hint = " " + hint
+	}
+	marker := fmt.Sprintf("\n[gocode: output truncated. %d bytes (%d lines) omitted here; showing the first %d and last %d bytes of %d.%s]\n",
+		len(omitted), strings.Count(omitted, "\n"), len(head), len(tail), len(out), hint)
+	return head + marker + tail
 }
 
 // --- BashTool ---
@@ -175,9 +223,15 @@ func (t *FileReadTool) Execute(params map[string]interface{}) ToolResult {
 	}
 
 	lines := strings.Split(string(data), "\n")
+	// A trailing newline yields an empty final element that is not a line.
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		lines = lines[:n-1]
+	}
+	total := len(lines)
 
 	startLine := 0
-	endLine := len(lines)
+	endLine := total
+	endGiven := false
 
 	if v, ok := params["start_line"]; ok {
 		if n, err := toInt(v); err == nil && n > 0 {
@@ -187,14 +241,23 @@ func (t *FileReadTool) Execute(params map[string]interface{}) ToolResult {
 	if v, ok := params["end_line"]; ok {
 		if n, err := toInt(v); err == nil && n > 0 {
 			endLine = n // 1-indexed inclusive → 0-indexed exclusive
+			endGiven = true
 		}
 	}
 
 	if startLine < 0 {
 		startLine = 0
 	}
-	if endLine > len(lines) {
-		endLine = len(lines)
+	if endLine > total {
+		endLine = total
+	}
+	// Without an explicit end, a large file is read in pages. The model is told
+	// where the page ends and how to ask for the next one; an explicit range is
+	// honoured as asked.
+	capped := false
+	if !endGiven && endLine-startLine > DefaultReadLines {
+		endLine = startLine + DefaultReadLines
+		capped = true
 	}
 	if startLine >= endLine {
 		return ToolResult{Success: true, Output: ""}
@@ -205,8 +268,18 @@ func (t *FileReadTool) Execute(params map[string]interface{}) ToolResult {
 	for i := startLine; i < endLine; i++ {
 		sb.WriteString(fmt.Sprintf("%d: %s\n", i+1, lines[i]))
 	}
+	if capped {
+		fmt.Fprintf(&sb, "\n[gocode: file has %d lines; showing %d-%d. Pass start_line=%d to continue, or start_line and end_line for a specific range.]\n",
+			total, startLine+1, endLine, endLine+1)
+	}
 	return ToolResult{Success: true, Output: sb.String()}
 }
+
+// DefaultReadLines is how much of a file FileReadTool returns when no end_line
+// is given. Two thousand lines of typical source is on the order of 20k
+// tokens, already a large share of a turn; whole files beyond that are read
+// in pages on request rather than dumped into context unasked.
+const DefaultReadLines = 2000
 
 // --- FileEditTool ---
 

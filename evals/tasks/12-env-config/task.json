@@ -1,0 +1,3 @@
+{
+  "prompt": "Implement Load in env.go so it reads configuration from environment variables. APP_PORT: integer port, default 8080 when unset or empty; return an error if it is not an integer or is outside 1..65535. APP_HOST: default \"127.0.0.1\" when unset or empty. APP_DEBUG: true only when the value is exactly \"true\" or \"1\" (case-insensitive for \"true\"); anything else, including unset, is false. Do not change the Config type or the Load signature."
+}

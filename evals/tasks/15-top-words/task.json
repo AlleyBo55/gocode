@@ -1,0 +1,3 @@
+{
+  "prompt": "Implement TopWords in words.go. Split text into words on any run of non-letter characters (letters are what unicode.IsLetter accepts), lowercase them, count occurrences, and return the n most frequent as WordCount values ordered by count descending, ties broken by word ascending. If there are fewer than n distinct words return all of them. n <= 0 or empty text returns an empty, non-nil slice."
+}

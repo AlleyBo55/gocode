@@ -1,0 +1,3 @@
+{
+  "prompt": "Reverse in reverse.go mangles non-ASCII strings such as \"héllo\" and \"日本語\". Make it reverse by Unicode code point (rune) rather than by byte. The existing test must keep passing; do not edit or delete tests."
+}

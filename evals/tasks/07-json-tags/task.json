@@ -1,0 +1,3 @@
+{
+  "prompt": "The User struct in user.go is serialised to JSON for an API whose clients expect snake_case keys: id, full_name, email, created_at, is_admin. Add the json struct tags so encoding/json produces exactly those keys, and make email omitted from the output when it is empty. Do not rename any Go fields."
+}

@@ -3,3 +3,7 @@ dist/
 .port_sessions/
 *.tmp
 .DS_Store
+
+# per-machine caches and token-spending run output
+.gocode/capabilities.json
+evals/results/

@@ -3,6 +3,7 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -41,11 +42,31 @@ func ResolveProvider(model string, apiKeyFlag string) (Provider, string, error) 
 		}, auth), resolvedModel, nil
 	}
 
+	// A local model id ("qwen2.5-coder:7b") with no endpoint configured means
+	// the user has Ollama or LM Studio running and expects it to be used. Find
+	// it rather than failing with a missing-credentials error for a hosted
+	// provider they never asked for.
+	if LooksLocal(resolvedModel) {
+		if srv, ok := DetectLocalServer(); ok {
+			return newLocalProvider(srv), resolvedModel, nil
+		}
+		return nil, resolvedModel, &apitypes.ApiError{
+			Kind:     apitypes.ErrMissingCredentials,
+			Provider: "local model server",
+			EnvVars:  []string{"OLLAMA_HOST", "OPENAI_BASE_URL"},
+			Message: fmt.Sprintf("%s looks like a local model, but nothing answered at %s (Ollama) or http://localhost:1234 (LM Studio); "+
+				"start the server, or point OLLAMA_HOST or OPENAI_BASE_URL at it", resolvedModel, ollamaHost()),
+		}
+	}
+
 	kind := DetectProviderKind(resolvedModel)
 
 	// Codex backend: load auth from ~/.codex/auth.json
 	if kind == ProviderCodex {
-		auth := resolveCodexAuth(apiKeyFlag)
+		auth, err := resolveCodexAuth(apiKeyFlag)
+		if err != nil {
+			return nil, resolvedModel, err
+		}
 		return NewOpenAiCompatProvider(OpenAiCompatConfig{
 			ProviderName: "Codex",
 			BaseURLEnv:   "CODEX_BASE_URL",
@@ -101,31 +122,53 @@ func ResolveProvider(model string, apiKeyFlag string) (Provider, string, error) 
 	}
 }
 
-// resolveCodexAuth loads Codex auth from ~/.codex/auth.json or falls back to OPENAI_API_KEY.
-func resolveCodexAuth(apiKeyFlag string) apitypes.AuthSource {
+// resolveCodexAuth loads Codex auth from the CLI flag, then the Codex CLI's
+// cached credentials, then OPENAI_API_KEY.
+func resolveCodexAuth(apiKeyFlag string) (apitypes.AuthSource, error) {
 	if apiKeyFlag != "" {
-		return apitypes.AuthApiKey(apiKeyFlag)
+		return apitypes.AuthApiKey(apiKeyFlag), nil
 	}
-	// Try ~/.codex/auth.json
-	home, _ := os.UserHomeDir()
-	codexPath := filepath.Join(home, ".codex", "auth.json")
-	if data, err := os.ReadFile(codexPath); err == nil {
-		var codexAuth struct {
-			APIKey string `json:"api_key"`
-			Token  string `json:"token"`
-		}
-		if json.Unmarshal(data, &codexAuth) == nil {
-			if codexAuth.APIKey != "" {
-				return apitypes.AuthApiKey(codexAuth.APIKey)
-			}
-			if codexAuth.Token != "" {
-				return apitypes.AuthBearer(codexAuth.Token)
-			}
-		}
+	if key := readCodexApiKey(codexAuthPath()); key != "" {
+		return apitypes.AuthApiKey(key), nil
 	}
-	// Fall back to OPENAI_API_KEY
 	if key := readEnvNonEmpty("OPENAI_API_KEY"); key != "" {
-		return apitypes.AuthApiKey(key)
+		return apitypes.AuthApiKey(key), nil
 	}
-	return apitypes.AuthSource{}
+	return apitypes.AuthSource{}, apitypes.NewMissingCredentials("Codex", "OPENAI_API_KEY")
+}
+
+// codexAuthPath is where the Codex CLI caches credentials. CODEX_HOME
+// overrides the default, matching the CLI's own lookup.
+func codexAuthPath() string {
+	if home := readEnvNonEmpty("CODEX_HOME"); home != "" {
+		return filepath.Join(home, "auth.json")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".codex", "auth.json")
+}
+
+// readCodexApiKey returns the API key from a Codex CLI auth.json, or "".
+//
+// The file the CLI writes today is {"auth_mode":"apikey","OPENAI_API_KEY":"..."}.
+// When the user signed in with ChatGPT instead, the file carries an OAuth
+// access token under "tokens". That token is only valid against the ChatGPT
+// backend's Responses API, which this provider does not speak, so it is
+// deliberately not read: a missing-credentials error is more useful than a 401.
+func readCodexApiKey(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var codexAuth struct {
+		OpenAIAPIKey string `json:"OPENAI_API_KEY"`
+		// Older layouts, kept so an existing file keeps working.
+		APIKey string `json:"api_key"`
+	}
+	if json.Unmarshal(data, &codexAuth) != nil {
+		return ""
+	}
+	if codexAuth.OpenAIAPIKey != "" {
+		return codexAuth.OpenAIAPIKey
+	}
+	return codexAuth.APIKey
 }
