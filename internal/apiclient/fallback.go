@@ -104,14 +104,25 @@ func isFallbackRetryable(err error) bool {
 		return false
 	}
 
+	// Providers retry internally first, so by the time a 429 or 5xx reaches the
+	// chain it is wrapped in RetriesExhausted, whose own Status is 0. Judge the
+	// cause, not the wrapper, or fallback never fires for the case it exists for.
+	if apiErr.Kind == apitypes.ErrRetriesExhausted {
+		var inner *apitypes.ApiError
+		if apiErr.Wrapped != nil && errors.As(apiErr.Wrapped, &inner) {
+			apiErr = inner
+		}
+	}
+
 	// Check retryable HTTP status codes.
 	switch apiErr.Status {
 	case 429, 500, 502, 503, 504:
 		return true
 	}
 
-	// Check for context-window-exceeded error type.
-	if isContextWindowExceeded(apiErr.ErrorType) {
+	// Check for context-window-exceeded. Anthropic signals it in the error
+	// type; OpenAI-compatible APIs keep the type generic and put it in code.
+	if isContextWindowExceeded(apiErr.ErrorType) || isContextWindowExceeded(apiErr.Code) {
 		return true
 	}
 

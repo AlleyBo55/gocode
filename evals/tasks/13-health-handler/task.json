@@ -1,0 +1,3 @@
+{
+  "prompt": "Implement HealthHandler in health.go as an http.HandlerFunc. For GET requests respond 200 with Content-Type \"application/json\" and the body {\"status\":\"ok\"} (a trailing newline is fine). For any other method respond 405 Method Not Allowed with an Allow: GET header. Do not change the function signature."
+}

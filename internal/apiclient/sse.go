@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -129,5 +130,59 @@ func parseFrame(frame *string) (*apitypes.StreamEvent, error) {
 	if err := json.Unmarshal([]byte(payload), &event); err != nil {
 		return nil, &apitypes.ApiError{Kind: apitypes.ErrInvalidSseFrame, Message: err.Error()}
 	}
+	if event.Kind == "error" {
+		// Anthropic reports mid-stream failures (overloaded_error, api_error) as
+		// an "error" frame whose payload is not a content block. Reshape it into
+		// the error event the REPL renders, otherwise it is forwarded with no
+		// text and silently dropped.
+		var envelope struct {
+			Error struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal([]byte(payload), &envelope)
+		msg := envelope.Error.Message
+		if envelope.Error.Type != "" {
+			msg = envelope.Error.Type + ": " + msg
+		}
+		if msg == "" {
+			msg = payload
+		}
+		event = errorEvent("Error: stream " + msg)
+	}
 	return &event, nil
+}
+
+// errorEvent builds the stream event the runtime and REPL treat as a surfaced
+// error: Kind "error" with the message in BlockDelta.Text. Keep every producer
+// on this one shape so the consumer check in repl.go stays a single condition.
+func errorEvent(text string) apitypes.StreamEvent {
+	return apitypes.StreamEvent{
+		Kind:       "error",
+		BlockDelta: &apitypes.ContentBlockDelta{Kind: "text_delta", Text: text},
+	}
+}
+
+// streamErrorEvent wraps a transport or parse failure as an error event.
+func streamErrorEvent(err error) apitypes.StreamEvent {
+	return errorEvent("Error: stream interrupted: " + err.Error())
+}
+
+// forwardEvents sends events until done or the context is cancelled. It
+// reports false when the consumer has gone away so the producer can stop.
+// A cancelled context is the user's doing, not a failure, which is why an
+// error event queued after Ctrl-C is dropped here rather than displayed.
+func forwardEvents(ctx context.Context, ch chan<- apitypes.StreamEvent, events []apitypes.StreamEvent) bool {
+	for _, ev := range events {
+		if ctx.Err() != nil {
+			return false
+		}
+		select {
+		case ch <- ev:
+		case <-ctx.Done():
+			return false
+		}
+	}
+	return true
 }

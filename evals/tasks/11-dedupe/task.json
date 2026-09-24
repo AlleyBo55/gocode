@@ -1,0 +1,3 @@
+{
+  "prompt": "Implement Dedupe in dedupe.go: return the input strings with duplicates removed, keeping the first occurrence of each and preserving order. Comparison is case-sensitive. A nil or empty input returns an empty, non-nil slice. The input slice must not be modified."
+}

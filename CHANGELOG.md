@@ -4,6 +4,55 @@ All notable changes to gocode are documented here.
 
 ---
 
+## v0.10.0 — The Any-Model Release Has To Actually Work With Any Model
+
+*No new parity rows. The provider layer, the permission boundary, and the agent loop get tests, and the things those tests found get fixed.*
+
+### Token efficiency
+- **Prompt caching on Anthropic.** The system prompt (which covers the tool schemas) and the newest message carry `cache_control` breakpoints, so every turn after the first reads the fixed prefix and the prior conversation at a tenth of the input price. Markers are set on request copies, never on the stored session. `/cost` already prices cache reads and writes at Anthropic's rates. Set `GOCODE_DISABLE_PROMPT_CACHE=1` for an Anthropic-compatible endpoint that rejects the field.
+- **Tool output is capped at 40 KB.** Every tool result, including plugin tools, keeps its head and tail (failures live at the end) and replaces the middle with a marker that says how much was dropped and how to ask for the part you need. Previously one `cat` of a build log could put 100k tokens into context and every later turn paid for it again.
+- **File reads are paged.** `FileReadTool` without an `end_line` returns 2000 lines and names the `start_line` to continue from; explicit ranges are honoured in full. A file ending in a newline no longer gets a phantom empty last line.
+- **Context estimate counts tool results.** The 85% auto-compaction threshold was computed over message text only; tool results, the bulk of any coding session, counted as zero, so compaction fired long after the real window was exceeded.
+
+### Swarm, made real
+- Until now `send_agent_message` was registered for one agent named `main` and never offered to the model, and nothing read any mailbox. Now every sub-agent the orchestrator spawns joins the swarm under its own name (`deep-worker-1`, `planner-2`, ...) for the duration of its run, is offered `send_agent_message` and `list_agents`, and reads its inbox at the start of every turn. The interactive session is `main` and has the same two tools. Background agents post a bounded report of their result, or their failure, to `main`'s inbox, so the next turn hears about it without polling `/tasks`.
+
+### Fixed
+- **Streams that broke mid-reply were recorded as complete.** Both provider stream readers returned silently on a malformed frame or a dropped connection; the runtime saw a clean close and treated the partial reply as the model's answer. They now emit the error event the REPL already renders. Anthropic's own mid-stream `error` frames (`overloaded_error`) are surfaced the same way instead of being forwarded as empty events.
+- **Model fallback never fired for rate limits.** Providers retry internally and wrap the final 429 in a `RetriesExhausted` error whose status is 0; the fallback chain judged the wrapper, not the cause. OpenAI's `context_length_exceeded` lives in `error.code`, which was never read.
+- **Token counts for streamed turns were wrong.** OpenAI-compatible streams never requested usage (`stream_options.include_usage`) and recorded zero. Anthropic streams recorded zero *input* tokens because input lives in `message_start` and only `message_delta` was read.
+- **Trusted-tool patterns matched substrings of the raw JSON.** `BashTool:ls *` auto-approved `rm -rf ./tools`; `FileWriteTool:src *` approved `src/../../etc/passwd`. Prefixes now match the command on a word boundary, the search pattern at its start, and the cleaned path at a directory boundary.
+- **Compound commands slipped past a trusted prefix.** `BashTool:git *` approved `git status; rm -rf /`. Every command on the line must now be covered by a trusted prefix; command substitution and file-writing redirection are never auto-trusted (`2>&1` and `>/dev/null` are fine).
+- **Malformed tool arguments executed with empty input.** A tool call whose JSON did not parse ran with no arguments and produced a misleading "path is required" error. The model now gets a precise error naming the bad JSON and is asked to resend.
+- The Codex provider path was unreachable (`codex` matched the generic OpenAI branch first) and read the wrong keys from `~/.codex/auth.json`. It now reads the file the Codex CLI actually writes, honours `CODEX_HOME`, and fails with a clear missing-credentials error instead of a 401.
+
+### Added
+- **Zero-config local models.** A model id with an Ollama-style tag (`qwen2.5-coder:7b`, or the `llama` alias) is routed to a running Ollama or LM Studio automatically, no key, no `OPENAI_BASE_URL`. `OLLAMA_HOST` is honoured for non-default addresses. If nothing is listening, the error names the local servers it looked for instead of blaming a missing Anthropic key.
+- **Works with nothing configured.** With no `--model`, no provider keys, and a local server that has models installed, `gocode` picks a coding model from it, prints which one on stderr, and starts. With nothing at all, it prints three ways to get started (local and free, one OpenRouter key, your own provider key), naming the local models it found, instead of a bare credentials error.
+- **Bare `gocode` starts chat** when run in a terminal, like every other agent CLI. Piped or scripted, it prints help. `gocode --model X` works as shorthand for `gocode chat --model X`.
+- **Help is organised.** `gocode --help` groups commands (Agent, Servers and integrations, Sessions and settings, Diagnostics) and hides the eighteen porting-harness commands (`manifest`, `parity-audit`, `teleport-mode`, ...). They still run; they just no longer greet new users.
+- **Loop guard.** When the model issues the same tool calls and gets the same results three iterations in a row, it is told so in the tool result; after five, the loop stops with reason `stuck`. A command re-run after an edit, or a poll whose output changes, never trips it. Weak models used to burn every one of `--max-turns` this way.
+- **`--max-cost <usd>`** on `chat` and `prompt`. Stops the session cleanly when its estimated spend reaches the limit, before running any pending tools, and leaves the transcript valid. Warns up front when the model has no price data and the limit cannot be enforced. Intended for unattended runs such as the GitHub Action.
+- **Per-model cost ledger.** `/cost` now shows tokens, turns, estimated cost, and cost share for each model that served the session, from a real list-price table (`internal/apiclient/pricing.go`) instead of a blended $3/$15 guess. Under a fallback chain this shows which model actually answered.
+- **`gocode doctor --model <alias>`.** Four small requests probe whether the model streams, honours a system prompt, calls a tool with valid arguments, and calls several tools in one turn. Results are cached in `.gocode/capabilities.json` (`--refresh` to redo). `chat` and `prompt` warn at startup when the cached probe says the model failed tool calls or ignored the system prompt.
+- **Eval harness** under `evals/`: 15 small Go tasks with hidden tests and reference solutions, a runner that builds gocode and scores each task by the module's own tests, and a self-test that proves every task is solvable and discriminating without spending a token. `go run ./evals/runner -model sonnet`. Opt-in; it spends tokens and is not part of CI.
+- Tests for `apiclient` (recorded SSE fixtures for both wire formats, retry and error paths, provider resolution), `agent` (permission decisions, trust store, the streaming and non-streaming loops, the new guards), and `permissions`. These packages had none.
+
+### Changed
+- Bare `gocode` in a terminal now starts chat instead of printing help. Scripts are unaffected: without a TTY it still prints help and exits 0. Positional text (`gocode "fix it"`) is rejected as before; use `gocode prompt "fix it"`.
+- A local-looking model id with no server running now fails with a local-specific message rather than "missing Anthropic credentials".
+- `/cost` output is multi-line and priced per model; anything parsing the old single line will see extra lines. `--output-format json` `total_cost` uses the same real pricing.
+- `--model codex` with no credentials now errors at startup instead of returning a provider that fails on first use.
+- `doctor` exits non-zero when `--model` cannot be resolved. The no-flag path is unchanged.
+- A trusted `BashTool:git *` no longer covers `git log | head` on its own; trust `head *` too, or answer the prompt.
+
+### Known gaps
+- Proxy providers (OpenRouter, Groq, ...) prefer the environment key over `--api-key`, the reverse of native providers. Left as is; noted in `provider_test.go`.
+- The price table is hand-maintained and will drift. There is no override file yet.
+- The alias `deepseek` points at `deepseek-chat`, which DeepSeek retired in July 2026.
+
+---
+
 ## v0.9.0 — One More Thing.
 
 *18 new features. 8 new skills. The agent learns to dream, plan, coordinate, and remember.*

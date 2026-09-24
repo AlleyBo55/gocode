@@ -1,0 +1,3 @@
+{
+  "prompt": "NewEmail in email.go accepts any string. Make it validate its input. Rules: trim surrounding whitespace first; return ErrInvalidEmail when the result is empty, contains no '@' or more than one '@', has an empty part before or after the '@', or the part after the '@' contains no '.'. On success store the address with the domain (after the '@') lowercased and the local part (before the '@') unchanged. Do not change any exported names or signatures."
+}

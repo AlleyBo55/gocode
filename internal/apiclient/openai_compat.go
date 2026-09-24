@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -96,28 +97,24 @@ func (p *OpenAiCompatProvider) StreamMessage(ctx context.Context, req apitypes.M
 			n, readErr := resp.Body.Read(buf)
 			if n > 0 {
 				chunks, parseErr := parser.push(buf[:n])
-				if parseErr != nil {
-					return
-				}
 				for _, chunk := range chunks {
-					events := state.ingestChunk(chunk)
-					for _, ev := range events {
-						select {
-						case ch <- ev:
-						case <-ctx.Done():
-							return
-						}
-					}
-				}
-			}
-			if readErr != nil {
-				for _, ev := range state.finish() {
-					select {
-					case ch <- ev:
-					case <-ctx.Done():
+					if !forwardEvents(ctx, ch, state.ingestChunk(chunk)) {
 						return
 					}
 				}
+				if parseErr != nil {
+					// Do not call finish(): a truncated reply must not be
+					// reported as end_turn.
+					forwardEvents(ctx, ch, []apitypes.StreamEvent{streamErrorEvent(parseErr)})
+					return
+				}
+			}
+			if readErr != nil {
+				if readErr != io.EOF {
+					forwardEvents(ctx, ch, []apitypes.StreamEvent{streamErrorEvent(apitypes.WrapIo(readErr))})
+					return
+				}
+				forwardEvents(ctx, ch, state.finish())
 				return
 			}
 		}
@@ -201,6 +198,11 @@ func buildChatCompletionRequest(req apitypes.MessageRequest) map[string]interfac
 		"model":    req.Model,
 		"messages": messages,
 		"stream":   req.Stream,
+	}
+	if req.Stream {
+		// Without this, OpenAI-style servers omit usage from the stream and
+		// every streamed turn is recorded as zero tokens.
+		payload["stream_options"] = map[string]interface{}{"include_usage": true}
 	}
 	// Newer OpenAI models (o1, o3, o4, gpt-5.x) require max_completion_tokens
 	// instead of max_tokens. Other providers and older models use max_tokens.

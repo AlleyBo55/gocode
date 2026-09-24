@@ -259,7 +259,25 @@ WebSocket server for bidirectional communication between gocode and IDEs. Suppor
 
 ### Swarm Coordination
 
-Agent-to-agent messaging and discovery for multi-agent workflows. Each agent gets a mailbox for inter-agent communication. The `SendMessageTool` lets agents coordinate on shared tasks. The orchestrator maintains a discovery registry with agent capabilities and status.
+Every agent in a session is a named member of one swarm and can talk to the others.
+
+- The interactive session is the agent `main`.
+- Each sub-agent the orchestrator spawns joins under its own instance name for the duration of its run: `deep-worker-1`, `planner-2`, and so on. Two parallel deep-workers never share a mailbox.
+- Every member is offered two tools. `send_agent_message` delivers to a named agent; `list_agents` shows who is running, with status and category. A sub-agent's system prompt tells it its own name and that it should report to `main`.
+- A message is read at the start of the recipient's next turn. It arrives as a user message after any pending tool results, so the model sees `[message from deep-worker-1]` followed by the content, and the tool_use/tool_result pairing the APIs require is never broken.
+- When a background agent finishes, it posts a bounded report (the task and up to 4 KB of its output, or the error) to `main`'s inbox. The next turn in the session hears about it without polling `/tasks`; the full output is still on the result channel.
+
+What this is not: a shared context. Each agent has its own conversation and sees only what it is told or messaged. That is deliberate; it is what keeps five agents from costing five times a full context on every turn.
+
+### Token Efficiency
+
+The per-turn bill is decided by three things, and each is handled:
+
+- **The fixed prefix.** The system prompt is about 1,700 tokens plus twelve tool schemas. On Anthropic it carries a prompt-cache breakpoint, and so does the newest message, so every turn after the first reads the prefix and the earlier conversation at a tenth of the input price. Breakpoints go on request copies, never on the stored session, so there is always exactly one on the messages. `GOCODE_DISABLE_PROMPT_CACHE=1` turns the markers off for an Anthropic-compatible endpoint that rejects them.
+- **Tool output.** Every tool result is capped at 40 KB. The head and tail are kept, the middle is replaced by a marker that says how many bytes and lines were dropped and, per tool, how to ask for the part you need (`start_line`/`end_line`, a narrower grep, `head`/`tail`). `FileReadTool` without an `end_line` returns 2000 lines and names the line to continue from.
+- **Compaction.** The REPL summarises and resets the session at 85% of the model's context window. The estimate now includes tool results, which are most of the tokens in a coding session.
+
+`/cost` shows the outcome per model, cache reads included; `--max-cost` caps a session in dollars.
 
 ### PDF Handling
 

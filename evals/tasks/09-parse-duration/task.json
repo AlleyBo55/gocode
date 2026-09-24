@@ -1,0 +1,3 @@
+{
+  "prompt": "Implement ParseHuman in duration.go. It parses human-written durations made of one or more integer+unit terms, where the units are d (24 hours), h, m and s, for example \"1h30m\", \"45s\", \"2d\", \"1d 2h 3m 4s\". Terms may be separated by spaces and the input may have surrounding whitespace. Return the total as a time.Duration. Return ErrInvalidDuration for an empty string, a term with no number, no unit, an unknown unit, a negative sign, or any other garbage. Do not change the function signature."
+}

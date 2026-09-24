@@ -22,6 +22,10 @@ type ApiError struct {
 	Kind      string
 	Status    int
 	ErrorType string
+	// Code is the provider's machine-readable error code when it is separate
+	// from ErrorType. OpenAI-compatible APIs put "context_length_exceeded" here
+	// while ErrorType stays "invalid_request_error"; Anthropic leaves it empty.
+	Code      string
 	Message   string
 	Body      string
 	Retryable bool
@@ -35,6 +39,9 @@ type ApiError struct {
 func (e *ApiError) Error() string {
 	switch e.Kind {
 	case ErrMissingCredentials:
+		if e.Message != "" {
+			return e.Message
+		}
 		return fmt.Sprintf("missing %s credentials; export %s before calling the API", e.Provider, joinOr(e.EnvVars))
 	case ErrExpiredOAuthToken:
 		return "saved OAuth token is expired and no refresh token is available"

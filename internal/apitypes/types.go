@@ -110,7 +110,21 @@ type InputContentBlock struct {
 	Content   string          `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
 	Source    *ImageSource    `json:"source,omitempty"` // for image blocks
+	// CacheControl marks a prompt-cache breakpoint on Anthropic. Providers
+	// that do not support it ignore the field. Set only on request copies,
+	// never on the stored session, or breakpoints accumulate across turns.
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
 }
+
+// CacheControl is Anthropic's prompt-cache marker. The only type is
+// "ephemeral"; the cache covers everything up to and including the block
+// that carries it.
+type CacheControl struct {
+	Type string `json:"type"`
+}
+
+// EphemeralCache is the cache marker to attach to a block.
+func EphemeralCache() *CacheControl { return &CacheControl{Type: "ephemeral"} }
 
 // ToolDef is an LLM tool definition.
 type ToolDef struct {

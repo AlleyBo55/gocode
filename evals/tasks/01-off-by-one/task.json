@@ -1,0 +1,3 @@
+{
+  "prompt": "Sum in stats.go returns the wrong total for non-empty slices. Find and fix the bug. Do not change the function signature."
+}

@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
+	"github.com/AlleyBo55/gocode/internal/swarm"
 )
 
 // SubAgentDef defines a specialist agent profile.
@@ -32,6 +35,22 @@ type Orchestrator struct {
 	router     *apiclient.ModelRouter
 	executor   agent.ToolExecutor
 	maxBgAgent int
+
+	// Swarm, when set, makes every delegated agent a member: it is registered
+	// under a unique instance name for the duration of its run, gets the
+	// send_agent_message and list_agents tools bound to that name, and reads
+	// its inbox before each turn. Background agents post their result to the
+	// main agent's inbox when they finish.
+	Swarm *swarm.SwarmManager
+
+	mu  sync.Mutex
+	seq map[string]int // per-profile instance counter for unique names
+}
+
+// WithSwarm attaches a swarm manager and returns the orchestrator for chaining.
+func (o *Orchestrator) WithSwarm(s *swarm.SwarmManager) *Orchestrator {
+	o.Swarm = s
+	return o
 }
 
 // NewOrchestrator creates an orchestrator with built-in sub-agent profiles
@@ -87,43 +106,81 @@ func (o *Orchestrator) Register(def SubAgentDef) {
 // Delegate spawns a new ConversationRuntime for the named sub-agent,
 // sends the task, and returns the agent's text output.
 func (o *Orchestrator) Delegate(ctx context.Context, agentName string, task string) (string, error) {
+	output, _, err := o.delegate(ctx, agentName, task)
+	return output, err
+}
+
+// delegate runs one sub-agent and also returns the swarm instance name it ran
+// under, so a background completion can be attributed.
+func (o *Orchestrator) delegate(ctx context.Context, agentName string, task string) (string, string, error) {
 	def, ok := o.registry[agentName]
 	if !ok {
-		return "", fmt.Errorf("unknown sub-agent: %q", agentName)
+		return "", "", fmt.Errorf("unknown sub-agent: %q", agentName)
 	}
 
 	provider, err := o.router.Route(def.Category)
 	if err != nil {
-		return "", fmt.Errorf("routing for agent %q: %w", agentName, err)
+		return "", "", fmt.Errorf("routing for agent %q: %w", agentName, err)
 	}
 
 	// Build a tool executor that respects the sub-agent's tool permissions.
 	exec := o.filteredExecutor(def)
-
-	rt := agent.NewConversationRuntime(agent.RuntimeOptions{
+	opts := agent.RuntimeOptions{
 		Provider:      provider,
 		Executor:      exec,
 		Model:         resolveModel(def, provider),
 		MaxTokens:     8192,
 		MaxIterations: 30,
 		SystemPrompt:  def.SystemPrompt,
-	})
-
-	resp, err := rt.SendUserMessage(ctx, task)
-	if err != nil {
-		return "", fmt.Errorf("sub-agent %q failed: %w", agentName, err)
 	}
 
-	return extractTextOutput(resp), nil
+	instance := agentName
+	if o.Swarm != nil {
+		instance = o.nextInstanceName(agentName)
+		if err := o.Swarm.Register(instance, def.ToolPerms, string(def.Category)); err != nil {
+			return "", "", fmt.Errorf("joining swarm as %q: %w", instance, err)
+		}
+		defer o.Swarm.Unregister(instance)
+		opts.Executor = swarm.WrapExecutor(exec, o.Swarm, instance)
+		opts.Inbox = o.Swarm.InboxFor(instance)
+		opts.SystemPrompt = def.SystemPrompt + "\n\nYou are agent \"" + instance + "\" in a swarm. " +
+			"Other agents may message you; their messages appear at the start of a turn. " +
+			"Report to \"" + swarm.MainAgent + "\" with send_agent_message when you have something it should know before you finish."
+	}
+
+	rt := agent.NewConversationRuntime(opts)
+	resp, err := rt.SendUserMessage(ctx, task)
+	if err != nil {
+		return "", instance, fmt.Errorf("sub-agent %q failed: %w", instance, err)
+	}
+	return extractTextOutput(resp), instance, nil
+}
+
+// nextInstanceName gives each spawn of a profile its own swarm identity:
+// deep-worker-1, deep-worker-2, ... Two parallel deep-workers must not share
+// a mailbox.
+func (o *Orchestrator) nextInstanceName(profile string) string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.seq == nil {
+		o.seq = make(map[string]int)
+	}
+	o.seq[profile]++
+	return fmt.Sprintf("%s-%d", profile, o.seq[profile])
 }
 
 // DelegateBackground spawns a background agent in a goroutine.
-// Returns a channel that will receive exactly one AgentResult.
+// Returns a channel that will receive exactly one AgentResult. With a swarm
+// attached, the result is also posted to the main agent's inbox, so the
+// interactive session hears about it on its next turn without polling.
 func (o *Orchestrator) DelegateBackground(ctx context.Context, agentName string, task string) <-chan AgentResult {
 	ch := make(chan AgentResult, 1)
 	go func() {
 		defer close(ch)
-		output, err := o.Delegate(ctx, agentName, task)
+		output, instance, err := o.delegate(ctx, agentName, task)
+		if o.Swarm != nil {
+			o.reportToMain(instance, task, output, err)
+		}
 		ch <- AgentResult{
 			AgentName: agentName,
 			Output:    output,
@@ -131,6 +188,29 @@ func (o *Orchestrator) DelegateBackground(ctx context.Context, agentName string,
 		}
 	}()
 	return ch
+}
+
+// reportToMain posts a background agent's outcome to the main agent. The
+// report is bounded so a verbose agent cannot flood the main context; the
+// full output is still available to whoever holds the result channel.
+func (o *Orchestrator) reportToMain(instance, task, output string, err error) {
+	const maxReport = 4000
+	var b strings.Builder
+	if err != nil {
+		fmt.Fprintf(&b, "Background agent %s failed on task %q: %v", instance, truncate(task, 200), err)
+	} else {
+		fmt.Fprintf(&b, "Background agent %s finished task %q.\n\n%s", instance, truncate(task, 200), truncate(output, maxReport))
+	}
+	// Delivery can fail only if main is not registered or its mailbox is full;
+	// neither is worth failing the agent over.
+	_ = o.Swarm.SendMessage(instance, swarm.MainAgent, b.String())
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + fmt.Sprintf("… [%d more bytes]", len(s)-n)
 }
 
 // --- ToolExecutor interface implementation ---

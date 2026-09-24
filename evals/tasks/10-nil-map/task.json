@@ -1,0 +1,3 @@
+{
+  "prompt": "Inventory in inventory.go panics on the first Add because its map is never initialised. Fix it so that both NewInventory() and a zero-value `var inv Inventory` are usable. Also make Remove return ErrInsufficient (without changing the stock) when asked to remove more than is held, and remove the key entirely when the count reaches zero so Count reports it as 0 and Items no longer lists it."
+}

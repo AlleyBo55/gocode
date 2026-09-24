@@ -1,0 +1,3 @@
+{
+  "prompt": "Rename the type Calc to Calculator everywhere in this module, including its constructor NewCalc, which becomes NewCalculator. Every reference in every file must be updated so the module still compiles. Behaviour must not change."
+}
