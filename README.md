@@ -209,9 +209,9 @@ no credentials, no anti-cheat, no proprietary code. REA is a tool for
 understanding systems you own or are licensed to examine.
 
 **One honest caveat.** REA is an external 178 MB Node tool with its own Node
-version pin (currently `^22.23.4 || ^24.22.1 || >=26.12.1`), and gocode's MCP
-client speaks to it over newline-delimited JSON — gocode's other, older MCP
-presets use a different framing and predate this. `gocode rea status` is the
+version pin (currently `^22.23.4 || ^24.22.1 || >=26.12.1`). gocode's MCP
+client talks to it over newline-delimited JSON, the MCP stdio standard and
+gocode's default for every server since v0.11.0. `gocode rea status` is the
 source of truth for whether the integration is live on your machine.
 
 ---
@@ -278,7 +278,7 @@ One binary. One key. Every model on the planet. Get your key at [openrouter.ai/k
 - Automatic model fallback on rate limits and server errors
 
 ### Planning & Strategy
-- `/plan` — interview-style planning sessions
+- `/plan` — toggle read-only plan mode: the agent reads, searches and fetches, then hands you a numbered plan; edits, shell, MCP tools and sub-agents stay blocked until you run `/plan` again
 - `/ultraplan` — deep planning with strongest available model (background, 30min timeout)
 - Structured plan output with scope analysis and step-by-step blueprints
 
