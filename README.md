@@ -47,7 +47,7 @@ gocode                      # finds Ollama, uses your local model, says so
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-gocode --model anthropic/claude-sonnet-4-6
+gocode --model anthropic/claude-sonnet-5.5
 ```
 
 **A provider key you already have:**
@@ -175,26 +175,29 @@ A model with no defined workflow (Gemini, Llama, DeepSeek, and so on) gets no in
 
 Every model. Every provider. One binary. No lock-in. Four native providers, seven proxy services, local inference, 200+ models. Set one env var and go.
 
-| Provider | Highlights | Env var |
-|----------|-----------|---------|
-| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | `ANTHROPIC_API_KEY` |
-| **OpenAI** | GPT-5.4, o3, o4-mini, Codex | `OPENAI_API_KEY` |
-| **Google** | Gemini 3.1 Pro, Gemini 3 Flash | `GEMINI_API_KEY` |
-| **xAI** | Grok 4.20 Beta, Grok 3 | `XAI_API_KEY` |
-| **DeepSeek** | DeepSeek Chat, R1 Reasoner, Coder | `DEEPSEEK_API_KEY` |
-| **Mistral** | Mistral Large, Codestral, Pixtral | `MISTRAL_API_KEY` |
-| **Groq** | Llama 3.3 70B at high throughput | `GROQ_API_KEY` |
-| **Together AI** | Llama 405B, Qwen 72B Turbo | `TOGETHER_API_KEY` |
-| **Novita AI** | Llama 3.3 70B, DeepSeek V3/R1, Qwen 2.5 | `NOVITA_API_KEY` |
-| **OpenRouter** | 200+ models, one API key | `OPENROUTER_API_KEY` |
+Model names are current as of November 2026.
+
+| Provider | Models | Env var |
+|----------|--------|---------|
+| **Anthropic** | Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 | `ANTHROPIC_API_KEY` |
+| **OpenAI** | GPT-6 Astra, GPT-6.1 Sol, GPT-6.1 Terra, GPT-6 Luna | `OPENAI_API_KEY` |
+| **Google** | Gemini 4 Argon, Gemini 3.8 Flash | `GEMINI_API_KEY` |
+| **xAI** | Grok 4.7, Grok 4.20 | `XAI_API_KEY` |
+| **DeepSeek** | DeepSeek V4 Pro, DeepSeek Flash (V4.1) | `DEEPSEEK_API_KEY` |
+| **Mistral** | Mistral Large 4, Mistral Medium 3.5, Codestral, Devstral 2 | `MISTRAL_API_KEY` |
+| **Groq** | GPT-OSS 120B and 20B at high throughput | `GROQ_API_KEY` |
+| **Together AI** | Kimi K3, GLM 5.3, DeepSeek V4 Pro, Qwen3.7 Max | `TOGETHER_API_KEY` |
+| **Novita AI** | Kimi K3.1 Pro, DeepSeek V4 Pro, GLM 5.3, MiniMax M3.1 Flash | `NOVITA_API_KEY` |
+| **OpenRouter** | Hundreds of models, one API key | `OPENROUTER_API_KEY` |
 | **Azure OpenAI** | Enterprise GPT deployments | `AZURE_OPENAI_API_KEY` |
 | **Local (Ollama / LM Studio)** | Run any model on your machine, detected automatically | none (`OLLAMA_HOST` for a non-default address) |
 
 ```bash
-gocode chat --model sonnet              # Claude
-gocode chat --model gpt5                # GPT-5.4
-gocode chat --model deepseek            # DeepSeek
-gocode chat --model groq-llama          # Llama on Groq
+gocode chat --model claude-opus-5-5     # Claude Opus 5.5
+gocode chat --model gpt-6.1-sol         # GPT-6.1 Sol
+gocode chat --model gemini-4-argon      # Gemini 4 Argon
+gocode chat --model grok-4.7            # Grok 4.7
+gocode chat --model deepseek-v4-pro     # DeepSeek V4 Pro
 gocode chat --model qwen2.5-coder:7b    # any model installed in Ollama, no key, no config
 gocode chat --goal coding               # auto-pick the best coding model you have a key for
 ```
@@ -206,13 +209,15 @@ Don't want to manage 11 keys? Set one OpenRouter key and reach every model from 
 ```bash
 export OPENROUTER_API_KEY=sk-or-your-key
 
-gocode chat --model openai/gpt-4o                         # GPT-4o
-gocode chat --model anthropic/claude-sonnet-4-20250514    # Claude Sonnet
-gocode chat --model google/gemini-2.5-pro-preview         # Gemini
-gocode chat --model x-ai/grok-3                           # Grok
-gocode chat --model deepseek/deepseek-chat                # DeepSeek
-gocode chat --model meta-llama/llama-3.3-70b-instruct     # Llama
-gocode chat --model mistralai/mistral-large-latest        # Mistral
+gocode chat --model anthropic/claude-sonnet-5.5    # Claude Sonnet 5.5
+gocode chat --model openai/gpt-6.1-sol             # GPT-6.1 Sol
+gocode chat --model google/gemini-4-argon          # Gemini 4 Argon
+gocode chat --model x-ai/grok-4.7                  # Grok 4.7
+gocode chat --model deepseek/deepseek-v4-pro       # DeepSeek V4 Pro
+gocode chat --model moonshotai/kimi-k3             # Kimi K3
+gocode chat --model z-ai/glm-5.3                   # GLM 5.3
+gocode chat --model qwen/qwen3.8-max-prime         # Qwen3.8 Max Prime
+gocode chat --model mistralai/mistral-large-4-0    # Mistral Large 4
 ```
 
 One binary, one key, every model. Get your key at [openrouter.ai/keys](https://openrouter.ai/keys).
