@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/AlleyBo55/gocode/internal/apitypes"
 )
@@ -103,11 +104,21 @@ type ServerDef struct {
 	Command string            `json:"command"`
 	Args    []string          `json:"args,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
-	// Framing selects the stdio transport framing. Empty (default) keeps the
-	// original LSP-style Content-Length framing; "ndjson" uses newline-delimited
-	// JSON, which is the MCP stdio standard that servers such as REA speak.
+	// Framing selects how requests are written. Empty (default) or "ndjson"
+	// writes newline-delimited JSON, the MCP stdio standard that gocode's own
+	// mcp-serve, REA and the reference servers speak. "content-length" writes
+	// LSP-style frames for older non-standard servers. Responses are read in
+	// either framing regardless of this setting.
 	Framing string `json:"framing,omitempty"`
 }
+
+// framingContentLength opts a server into LSP-style Content-Length frames.
+const framingContentLength = "content-length"
+
+// handshakeTimeout bounds initialize + tools/list, so a server that never
+// answers (wrong framing, crashed, waiting on stdin) cannot hang startup.
+// It covers an npx first-run download, which happens inside this window.
+const handshakeTimeout = 30 * time.Second
 
 // --- Server connection ---
 
@@ -128,12 +139,11 @@ func (sc *ServerConn) nextRequestID() int64 {
 	return atomic.AddInt64(&sc.nextID, 1)
 }
 
-// writeMessage frames and writes a JSON-RPC message per the server's transport.
-// Empty Framing uses LSP-style Content-Length framing (gocode's original
-// behavior); "ndjson" uses newline-delimited JSON, the MCP stdio standard that
-// servers such as REA speak. The caller must hold sc.mu.
+// writeMessage frames and writes a JSON-RPC message per the server's transport:
+// newline-delimited JSON by default, Content-Length frames only when the server
+// is configured with Framing "content-length". The caller must hold sc.mu.
 func (sc *ServerConn) writeMessage(body []byte) error {
-	if sc.def.Framing == "ndjson" {
+	if sc.def.Framing != framingContentLength {
 		if _, err := sc.stdin.Write(append(body, '\n')); err != nil {
 			sc.alive = false
 			return err
@@ -152,40 +162,39 @@ func (sc *ServerConn) writeMessage(body []byte) error {
 	return nil
 }
 
-// readMessage reads one framed JSON-RPC message per the server's transport.
-// The caller must hold sc.mu.
+// readMessage reads one JSON-RPC message, detecting the framing per message: a
+// "Content-Length:" header line starts an LSP-style frame, anything else is a
+// newline-delimited JSON message. The caller must hold sc.mu.
 func (sc *ServerConn) readMessage() ([]byte, error) {
-	if sc.def.Framing == "ndjson" {
-		for {
-			line, err := sc.stdout.ReadString('\n')
-			if err != nil {
-				sc.alive = false
-				return nil, err
-			}
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" {
-				continue
-			}
-			return []byte(trimmed), nil
-		}
-	}
-	contentLen := 0
+	var line string
 	for {
-		line, err := sc.stdout.ReadString('\n')
+		l, err := sc.stdout.ReadString('\n')
 		if err != nil {
 			sc.alive = false
 			return nil, err
 		}
-		line = strings.TrimSpace(line)
-		if line == "" {
+		line = strings.TrimSpace(l)
+		if line != "" {
 			break
 		}
-		if strings.HasPrefix(line, "Content-Length:") {
-			val := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
+	}
+	if !strings.HasPrefix(strings.ToLower(line), "content-length:") {
+		return []byte(line), nil
+	}
+	contentLen := 0
+	for line != "" {
+		if strings.HasPrefix(strings.ToLower(line), "content-length:") {
+			val := strings.TrimSpace(line[len("content-length:"):])
 			if _, err := fmt.Sscanf(val, "%d", &contentLen); err != nil {
 				return nil, fmt.Errorf("parsing Content-Length: %w", err)
 			}
 		}
+		l, err := sc.stdout.ReadString('\n')
+		if err != nil {
+			sc.alive = false
+			return nil, err
+		}
+		line = strings.TrimSpace(l)
 	}
 	if contentLen <= 0 {
 		return nil, fmt.Errorf("invalid Content-Length %d", contentLen)
@@ -221,22 +230,39 @@ func (sc *ServerConn) send(method string, params interface{}) (*jsonRPCResponse,
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	// Write with Content-Length header (LSP/MCP framing)
 	if err := sc.writeMessage(body); err != nil {
 		return nil, fmt.Errorf("writing request to server %q: %w", sc.def.Name, err)
 	}
 
-	respBody, err := sc.readMessage()
-	if err != nil {
-		return nil, fmt.Errorf("reading response from server %q: %w", sc.def.Name, err)
+	// Servers may emit notifications (logging, list_changed) before the
+	// response, so read until the message carrying our id arrives.
+	for {
+		respBody, err := sc.readMessage()
+		if err != nil {
+			return nil, fmt.Errorf("reading response from server %q: %w", sc.def.Name, err)
+		}
+		var env struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.Unmarshal(respBody, &env); err != nil {
+			return nil, fmt.Errorf("unmarshaling response from server %q: %w", sc.def.Name, err)
+		}
+		if env.Method != "" {
+			continue // a notification or server request, not our response
+		}
+		var resp jsonRPCResponse
+		if err := json.Unmarshal(respBody, &resp); err != nil {
+			return nil, fmt.Errorf("unmarshaling response from server %q: %w", sc.def.Name, err)
+		}
+		if resp.ID == id {
+			return &resp, nil
+		}
+		if resp.Error != nil && (len(env.ID) == 0 || string(env.ID) == "null") {
+			// The server could not parse our request; no other answer is coming.
+			return &resp, nil
+		}
 	}
-
-	var resp jsonRPCResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("unmarshaling response from server %q: %w", sc.def.Name, err)
-	}
-
-	return &resp, nil
 }
 
 // close terminates the server process.
@@ -379,20 +405,37 @@ func (m *Manager) connectServer(def ServerDef) error {
 	// Monitor for unexpected exit
 	go m.monitorServer(def.Name, sc)
 
-	// Perform initialize handshake
-	if err := m.initializeHandshake(sc); err != nil {
-		sc.close()
-		return fmt.Errorf("initialize handshake: %w", err)
-	}
+	// Handshake + tool discovery, bounded so a server that never answers
+	// cannot hang startup. The notification is fire-and-forget per MCP spec.
+	done := make(chan error, 1)
+	go func() {
+		if err := m.initializeHandshake(sc); err != nil {
+			done <- fmt.Errorf("initialize handshake: %w", err)
+			return
+		}
+		m.sendNotification(sc, "notifications/initialized", nil)
+		if err := m.discoverTools(sc, def.Name); err != nil {
+			done <- fmt.Errorf("discovering tools: %w", err)
+			return
+		}
+		done <- nil
+	}()
 
-	// Send initialized notification (no response expected — but we don't read for notifications)
-	// The notification is fire-and-forget per MCP spec
-	m.sendNotification(sc, "notifications/initialized", nil)
-
-	// Discover tools
-	if err := m.discoverTools(sc, def.Name); err != nil {
+	select {
+	case err := <-done:
+		if err != nil {
+			sc.close()
+			return err
+		}
+	case <-time.After(handshakeTimeout):
+		// send() holds sc.mu while blocked on a read. Killing the process and
+		// closing our end of stdout unblocks it (closing also covers children
+		// such as npx's node process that keep the pipe open).
+		_ = cmd.Process.Kill()
+		_ = stdoutPipe.Close()
+		<-done
 		sc.close()
-		return fmt.Errorf("discovering tools: %w", err)
+		return fmt.Errorf("no response within %s (if this server predates the MCP stdio standard, set \"framing\": \"content-length\")", handshakeTimeout)
 	}
 
 	m.mu.Lock()

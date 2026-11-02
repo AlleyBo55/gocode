@@ -168,7 +168,13 @@ func (r *REPL) Run(ctx context.Context) error {
 			r.display.Usage(r.runtime.GetUsage().Render())
 			continue
 		case CmdPlan:
-			fmt.Fprintln(r.writer, "Planning mode is not yet wired to a provider. Use /plan after configuring an orchestrator.")
+			on := !r.runtime.PlanMode()
+			r.runtime.SetPlanMode(on)
+			if on {
+				fmt.Fprintln(r.writer, "Plan mode ON (read-only): the agent can read, search and fetch, but cannot edit files, run commands, or call MCP tools. Run /plan again to leave and execute the plan.")
+			} else {
+				fmt.Fprintln(r.writer, "Plan mode OFF: tools are back to normal permissions.")
+			}
 			continue
 		case CmdInitDeep:
 			fmt.Fprintln(r.writer, "Generating AGENTS.md context files...")
@@ -198,7 +204,7 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintln(r.writer, "  /cost        Show token usage and cost")
 			fmt.Fprintln(r.writer, "  /model       Show or switch model")
 			fmt.Fprintln(r.writer, "  /skill       List or activate skills")
-			fmt.Fprintln(r.writer, "  /plan        Start planning session")
+			fmt.Fprintln(r.writer, "  /plan        Toggle read-only plan mode (investigate + plan, no edits)")
 			fmt.Fprintln(r.writer, "  /init-deep   Generate AGENTS.md files")
 			fmt.Fprintln(r.writer, "  /diff        Show git diff of changes")
 			fmt.Fprintln(r.writer, "  /undo        Undo changes (checkpoints or stash)")
@@ -449,6 +455,12 @@ func (r *REPL) Run(ctx context.Context) error {
 			if drive := r.goalTracker.DrivePrompt(); drive != "" {
 				input = drive + "\n\n" + input
 			}
+		}
+
+		// Plan mode: tool calls are already gated read-only by the runtime;
+		// this tells the model so it plans instead of retrying blocked tools.
+		if r.runtime.PlanMode() {
+			input = planModePrompt + "\n\n" + input
 		}
 
 		// Show spinner while waiting for first token

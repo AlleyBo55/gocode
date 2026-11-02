@@ -4,6 +4,25 @@ All notable changes to gocode are documented here.
 
 ---
 
+## v0.11.0 — MCP That Talks To Real Servers, And A Plan Mode That Plans
+
+*The MCP client now speaks the stdio standard by default, `/plan` stops being a stub, and the `/goal` and REA work merged since v0.10.0 ships.*
+
+### Behaviour change
+- **MCP stdio servers default to newline-delimited JSON.** Until now gocode wrote LSP-style `Content-Length` frames to every server in `.gocode/mcp.json`. The MCP stdio transport is newline-delimited, so the reference servers, REA, and gocode's own `gocode mcp-serve` never answered, and `gocode chat` waited forever at startup. A server that really needs the old frames can set `"framing": "content-length"`. Responses are read in either framing whatever the setting.
+
+### Fixed
+- **A silent MCP server can no longer hang startup.** `initialize` plus `tools/list` must finish within 30 seconds (enough for an `npx` first-run download); otherwise the server is killed, skipped, and the log says why.
+- **Server notifications no longer break a request.** A logging or `list_changed` notification arriving before a response was taken as the response. The client now reads until the message carrying its own request id arrives.
+
+### Added
+- **`/plan` is a real read-only mode.** It toggles a gate in the permission policy, checked before every other rule (including `--dangerously-skip-permissions`): file reads, glob, grep, directory listing, web fetch and search, and LSP lookups run; bash, file edits, MCP tools, sub-agents, tmux and `ast_grep` are refused with a reason the model can read. Each turn tells the model it is planning, so it returns a numbered plan instead of retrying blocked tools. `/plan` again restores normal permissions.
+- **`/goal` persistent objectives.** One objective with an optional token budget, `pause`/`resume`/`done`/`blocked`/`clear`, saved in `.gocode/` so it survives restarts, and injected ahead of each turn so the agent keeps driving it.
+- **Built-in REA integration.** `gocode rea setup` detects an installed REA and writes its `.gocode/mcp.json` entry; `gocode rea status` runs a live handshake and lists the tools. With REA connected, Claude Opus, Grok and GPT/Codex models get a matching investigator, adversarial-reviewer or rebuild-and-verify workflow prompt.
+- **Novita AI provider** (contributed by Thomas Modeneis). An OpenAI-compatible host for Llama 3.x, DeepSeek V3/R1 and Qwen 2.5, set with `NOVITA_API_KEY` and aliases such as `novita-llama` and `novita-deepseek`. The full list is in `docs/supported-models.md`.
+
+---
+
 ## v0.10.0 — The Any-Model Release Has To Actually Work With Any Model
 
 *No new parity rows. The provider layer, the permission boundary, and the agent loop get tests, and the things those tests found get fixed.*

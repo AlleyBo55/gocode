@@ -105,10 +105,10 @@ func roundTrip(t *testing.T, framing string) string {
 	return string(r.Result)
 }
 
-// TestWriteReadContentLength proves the original LSP Content-Length path still
-// round-trips after the framing refactor (regression guard).
+// TestWriteReadContentLength proves the opt-in LSP Content-Length path still
+// round-trips (regression guard for servers configured "content-length").
 func TestWriteReadContentLength(t *testing.T) {
-	got := roundTrip(t, "")
+	got := roundTrip(t, "content-length")
 	if !strings.Contains(got, `"ok":true`) {
 		t.Fatalf("result = %s", got)
 	}
@@ -146,11 +146,11 @@ func TestNdjsonWriteTerminatesWithNewline(t *testing.T) {
 }
 
 // TestContentLengthWriteHasHeader asserts the Content-Length writer emits a
-// proper header before the body (regression guard for the default path). It
+// proper header before the body (regression guard for the opt-in path). It
 // reads the header line AND drains the body so the client's body write does
 // not block on a full pipe.
 func TestContentLengthWriteHasHeader(t *testing.T) {
-	f := newPipeConn(t, "")
+	f := newPipeConn(t, "content-length")
 	done := make(chan string, 2)
 	go func() {
 		header, _ := f.serverRead.ReadString('\n') // "Content-Length: 8\r\n"

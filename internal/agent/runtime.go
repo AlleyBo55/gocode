@@ -651,3 +651,9 @@ func mergeUsage(base, delta apitypes.Usage) apitypes.Usage {
 		OutputTokens:             pick(base.OutputTokens, delta.OutputTokens),
 	}
 }
+
+// SetPlanMode turns read-only plan mode on or off for this runtime's tool calls.
+func (r *ConversationRuntime) SetPlanMode(on bool) { r.permPolicy.SetPlanMode(on) }
+
+// PlanMode reports whether read-only plan mode is on.
+func (r *ConversationRuntime) PlanMode() bool { return r.permPolicy.PlanMode() }
