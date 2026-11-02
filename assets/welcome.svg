@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="430" viewBox="0 0 860 430" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1326"/>
+      <stop offset="1" stop-color="#0a0f1f"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="844" height="414" rx="14" fill="url(#bg)" stroke="#1b2a4a" stroke-width="1.5"/>
+  <rect x="8" y="8" width="844" height="38" rx="14" fill="#101832"/>
+  <rect x="8" y="30" width="844" height="16" fill="#101832"/>
+  <circle cx="30" cy="27" r="6" fill="#ff5f56"/>
+  <circle cx="50" cy="27" r="6" fill="#ffbd2e"/>
+  <circle cx="70" cy="27" r="6" fill="#27c93f"/>
+  <text x="430" y="31" text-anchor="middle" font-size="13" fill="#6b7aa0">gocode</text>
+
+  <!-- gopher -->
+  <g font-size="20" font-weight="bold">
+    <text x="40" y="100" fill="#00ADD8">&#x256D;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x256E;</text>
+    <text x="40" y="126" fill="#00ADD8">&#x2502; <tspan fill="#ffffff">&#x25CF;&#160;&#160;&#x25CF;</tspan> &#x2502;</text>
+    <text x="40" y="152" fill="#00ADD8">&#x2502;&#160;&#160;<tspan fill="#00A29C">&#x25E1;</tspan>&#160;&#160;&#160;&#x2502;</text>
+    <text x="40" y="178" fill="#00ADD8">&#x2570;&#x2500;<tspan fill="#00A29C">&#x2282;&#x25AC;&#x25AC;&#x2283;</tspan>&#x2500;&#x256F;</text>
+  </g>
+
+  <!-- wordmark + taglines -->
+  <g>
+    <text x="210" y="118" font-size="30" font-weight="bold">
+      <tspan fill="#00ADD8">g</tspan><tspan fill="#00A29C">o</tspan><tspan fill="#00ADD8">c</tspan><tspan fill="#00A29C">o</tspan><tspan fill="#00ADD8">d</tspan><tspan fill="#00A29C">e</tspan>
+      <tspan fill="#5a6a93" font-size="18" font-weight="normal" dx="10">v0.12.0</tspan>
+    </text>
+    <text x="212" y="146" font-size="15" fill="#8b98b8">the lightweight coding agent</text>
+    <text x="212" y="170" font-size="14"><tspan fill="#3fb950">&#x00B7;</tspan> <tspan fill="#8b98b8">~20 ms cold start  &#x00B7;  8 MB binary  &#x00B7;  runs local models, no key</tspan></text>
+  </g>
+
+  <line x1="40" y1="206" x2="820" y2="206" stroke="#1b2a4a" stroke-width="1"/>
+
+  <!-- transcript -->
+  <g font-size="15">
+    <text x="40" y="240"><tspan fill="#3fb950" font-weight="bold">you&#x203A;</tspan> <tspan fill="#e6ebf5">refactor the auth handler to return typed errors</tspan></text>
+
+    <text x="40" y="278"><tspan fill="#00ADD8" font-weight="bold">&#x23FA;</tspan> <tspan fill="#ffffff" font-weight="bold">GrepTool</tspan> <tspan fill="#6b7aa0">"return errors.New" internal/auth</tspan></text>
+    <text x="40" y="302"><tspan fill="#00ADD8" font-weight="bold">&#x23FA;</tspan> <tspan fill="#ffffff" font-weight="bold">FileEditTool</tspan> <tspan fill="#6b7aa0">internal/auth/handler.go</tspan></text>
+
+    <text x="40" y="340"><tspan fill="#00ADD8">&#x2726;</tspan> <tspan fill="#cdd6ec">Wrapped 3 call sites in typed AuthError values and updated the caller.</tspan></text>
+
+    <text x="40" y="378"><tspan fill="#5b6a93">&#x280B;</tspan> <tspan fill="#4aa8e0">Tracing&#x2026;</tspan> <tspan fill="#5a6a93">    esc to interrupt  &#x00B7;  /plan read-only  &#x00B7;  /cost</tspan></text>
+  </g>
+</svg>

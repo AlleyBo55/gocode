@@ -4,6 +4,23 @@ All notable changes to gocode are documented here.
 
 ---
 
+## v0.12.0 — A Face Of Its Own
+
+*The terminal UI gets gocode's own identity — a blue gopher, its own waiting words — and output that behaves when it is not talking to a terminal.*
+
+### Behaviour change
+- **Color is off when the output is not a terminal.** gocode used to write ANSI color to anything, so `gocode chat | tee log` or redirecting to a file left escape codes in the text. Color now turns on only for a real terminal, and off for a pipe, a file, `NO_COLOR` set, or `TERM=dumb`. On a terminal nothing changes.
+
+### Added
+- **A welcome screen with gocode's own mark.** A two-tone blue gopher beside a plain `gocode` wordmark (real text, not ASCII-art letters, so it always reads clearly), the working directory and branch, the model and turn budget, and a one-line reminder of what gocode is: a small, fast binary that runs local models with no key. It is gocode's identity, deliberately not a recolor of another tool's banner.
+- **Rotating waiting words.** The thinking spinner cycles gocode's own verbs ("Tracing", "Untangling", "Gophering", ...) in blue, instead of a single fixed label.
+- **Typo help for slash commands.** A lone mistyped command such as `/stauts` now suggests the nearest real command (`/status`) and points at `/help`, instead of being sent to the model as a message and spending a turn. Prose that merely starts with `/` (for example `/etc/passwd is the file`) is untouched and still sent.
+
+### Changed
+- Tool calls render as a filled marker (`⏺ name`) with dimmed arguments, a cleaner, quieter line than the previous `⚡`.
+
+---
+
 ## v0.11.0 — MCP That Talks To Real Servers, And A Plan Mode That Plans
 
 *The MCP client now speaks the stdio standard by default, `/plan` stops being a stub, and the `/goal` and REA work merged since v0.10.0 ships.*
