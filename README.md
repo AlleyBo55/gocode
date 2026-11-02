@@ -106,6 +106,28 @@ The fixed part of every request is small: about 1,700 tokens of system prompt pl
 
 ## What's New
 
+### Unreleased — REA reverse-engineering, with model-matched investigator workflows
+
+gocode can now drive an installed [REA](https://github.com/morluto/rea)
+("Reverse Engineer Anything") over MCP and, when it does, automatically puts the
+active model into the right role for a three-model investigate → challenge →
+rebuild pipeline. Run `gocode rea setup` once; after that `gocode chat`
+auto-connects and the agent gets REA's 234 tools as `mcp_rea_*`.
+
+When REA tools are present, the system prompt gains a REA mode matched to the
+model — no flags, no manual skill:
+
+| Model | REA role |
+|-------|----------|
+| **Claude Opus** | Deep Investigator — traces one feature end to end, builds an evidence map. *No evidence, no claim.* |
+| **Grok** | Adversarial Reviewer — attacks the explanation, marks every conclusion SUPPORTED / WEAK / UNSUPPORTED. *Assume it is wrong.* |
+| **GPT / Codex / o-series** | Rebuilder + Verifier — rebuilds only from CONFIRMED rows, fills a parity matrix. *Unknown never reaches the code.* |
+
+Every prompt carries the same boundary: analyze only software you are authorized
+to inspect — no DRM bypass, credentials, anti-cheat, or proprietary code. REA
+runs as a separate process you install; gocode never bundles it. Details below
+in [REA Mode](#rea-mode--reverse-engineering-pipeline).
+
 ### v0.10.0 — the any-model release has to actually work with any model
 
 No new parity rows. The provider layer, the permission boundary, and the agent
@@ -143,6 +165,54 @@ Full terminal UI. Multi-agent orchestration. Model fallback. 21 slash commands. 
 | **Agent Mode (TUI)** | Full terminal UI with split panels, diff viewer, themes. | `gocode chat --tui` |
 | **API Server Mode** | Headless HTTP REST API for remote clients. | `gocode serve` |
 | **MCP Server Mode** | Plug into Cursor, Kiro, VS Code, Antigravity, or Claude Desktop. | `gocode mcp-serve` |
+| **REA Mode** | Reverse-engineering pipeline; auto-activates a model-matched role when REA tools are connected. | `gocode rea setup`, then `gocode chat` |
+
+---
+
+## REA Mode — Reverse-Engineering Pipeline
+
+gocode integrates with [REA](https://github.com/morluto/rea) ("Reverse Engineer
+Anything"), an external CLI + MCP server that gives the agent 234 tools for
+inspecting binaries, Electron/JS apps, .NET, APKs, firmware, and websites.
+gocode does not bundle REA — you install it once, and gocode launches it as a
+stdio MCP subprocess on demand.
+
+**Setup (one time):**
+
+```bash
+gocode rea setup     # detects REA + a compatible node, writes .gocode/mcp.json
+gocode rea status    # verifies the live MCP handshake, prints the tool count
+```
+
+After setup, `gocode chat` auto-connects to REA and exposes its tools as
+`mcp_rea_*`. That is the whole integration — there is no separate "mode" flag.
+
+**The model-matched part.** When REA tools are connected, gocode detects them
+and appends a REA workflow to the system prompt chosen by which model is
+active. This encodes a three-model pipeline — investigate, challenge, rebuild —
+where each model plays to its strength:
+
+| Active model | Role injected | The discipline it enforces |
+|--------------|---------------|----------------------------|
+| **Claude Opus** | Deep Investigator | Trace one feature end to end. Every finding is a row: observation · inference · limitation · unknown · target hash · evidence id. **No evidence, no claim.** |
+| **Grok** | Adversarial Reviewer | Break the explanation, don't extend it. Mark every conclusion SUPPORTED / WEAK / UNSUPPORTED. **Assume it is wrong.** |
+| **GPT / Codex / o-series** | Rebuilder + Verifier | Build only from CONFIRMED rows. Fill `PARITY_MATRIX.md`: input · original · mine · match. **Unknown never reaches the code.** |
+
+A model with no defined workflow (Gemini, Llama, DeepSeek, …) gets no injection,
+even with REA tools present — REA mode only activates for the three roles above.
+Run all three in sequence by switching models: investigate with Opus, challenge
+with Grok, rebuild with GPT.
+
+**The boundary is part of the feature.** Every REA workflow prompt carries the
+same limit: analyze only software you are authorized to inspect. No DRM bypass,
+no credentials, no anti-cheat, no proprietary code. REA is a tool for
+understanding systems you own or are licensed to examine.
+
+**One honest caveat.** REA is an external 178 MB Node tool with its own Node
+version pin (currently `^22.23.4 || ^24.22.1 || >=26.12.1`), and gocode's MCP
+client speaks to it over newline-delimited JSON — gocode's other, older MCP
+presets use a different framing and predate this. `gocode rea status` is the
+source of truth for whether the integration is live on your machine.
 
 ---
 

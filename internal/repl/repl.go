@@ -42,22 +42,22 @@ type REPLConfig struct {
 
 // REPL provides the interactive terminal chat interface.
 type REPL struct {
-	runtime      *agent.ConversationRuntime
-	reader       io.Reader
-	writer       io.Writer
-	display      *Display
-	config       REPLConfig
-	skills       []skills.Skill
-	customCmds   *customcmd.Loader
-	checkpointMgr *checkpoint.Manager
-	worktreeMgr  *worktree.Manager
-	voiceListener *voice.Listener
-	ultraplanner *ultraplan.Planner
-	dreamEngine  *dream.Dreamer
-	vimState     *vim.PersistentState
-	outputStyle  string
-	buddy        *buddy.Companion
-	goalTracker  *goal.Tracker
+	runtime        *agent.ConversationRuntime
+	reader         io.Reader
+	writer         io.Writer
+	display        *Display
+	config         REPLConfig
+	skills         []skills.Skill
+	customCmds     *customcmd.Loader
+	checkpointMgr  *checkpoint.Manager
+	worktreeMgr    *worktree.Manager
+	voiceListener  *voice.Listener
+	ultraplanner   *ultraplan.Planner
+	dreamEngine    *dream.Dreamer
+	vimState       *vim.PersistentState
+	outputStyle    string
+	buddy          *buddy.Companion
+	goalTracker    *goal.Tracker
 	goalLastTokens int
 }
 
@@ -855,7 +855,7 @@ func (r *REPL) handleGoalCommand(input string) {
 	if i := strings.Index(arg, "--budget "); i >= 0 {
 		objective = strings.TrimSpace(arg[:i])
 		rest := strings.TrimSpace(arg[i+len("--budget "):])
-		if n, err := strconv.Atoi(strings.Fields(rest+" ")[0]); err == nil {
+		if n, err := strconv.Atoi(strings.Fields(rest + " ")[0]); err == nil {
 			budget = n
 		}
 	}
@@ -1159,7 +1159,10 @@ var SkipProjectConfig bool
 
 // BuildSystemPrompt constructs the system prompt for the agent.
 // Modeled after Claude Code's agentic behavior — proactive, autonomous, thorough.
-func BuildSystemPrompt(tools []apitypes.ToolDef) string {
+// When REA tools are connected and the model has a defined REA workflow, the
+// matching REA mode prompt (investigator / adversarial reviewer / rebuilder) is
+// appended so the agent adopts that role automatically.
+func BuildSystemPrompt(tools []apitypes.ToolDef, model string) string {
 	cwd, _ := os.Getwd()
 	osName := os.Getenv("OSTYPE")
 	if osName == "" {
@@ -1276,6 +1279,15 @@ If the first search doesn't give a clear answer, you MUST search again with a di
 	_ = memStore.Load()
 	if mems := memStore.Render(); mems != "" {
 		sb.WriteString("\n\n# Persistent Memory\n\n" + mems)
+	}
+
+	// REA mode: when REA tools are connected and this model has a defined REA
+	// workflow, append its role prompt (investigator / adversarial reviewer /
+	// rebuilder) so the agent adopts that role automatically.
+	if hasREATools(tools) {
+		if prompt := reaWorkflowForModel(model); prompt != "" {
+			sb.WriteString("\n\n" + prompt + "\n")
+		}
 	}
 
 	return sb.String()
