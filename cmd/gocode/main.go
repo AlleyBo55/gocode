@@ -64,7 +64,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/worktree"
 )
 
-var version = "v0.11.0"
+var version = "v0.12.0"
 
 // defaultToLocalModel makes `gocode` work with nothing configured. When the
 // user did not choose a model, has no provider credentials, and a local

@@ -117,7 +117,8 @@ const framingContentLength = "content-length"
 
 // handshakeTimeout bounds initialize + tools/list, so a server that never
 // answers (wrong framing, crashed, waiting on stdin) cannot hang startup.
-// It covers an npx first-run download, which happens inside this window.
+// The window includes any npx first-run download, which runs before the
+// server can answer.
 const handshakeTimeout = 30 * time.Second
 
 // --- Server connection ---

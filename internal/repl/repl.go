@@ -63,6 +63,10 @@ type REPL struct {
 
 // NewREPL creates a new REPL.
 func NewREPL(rt *agent.ConversationRuntime, r io.Reader, w io.Writer, cfg REPLConfig, sk []skills.Skill) *REPL {
+	// Gate color once: a real terminal keeps the ANSI styling; a pipe, a
+	// redirect to a file, NO_COLOR, or TERM=dumb gets plain text. The whole
+	// REPL (banner, stream, tool lines) writes through this one wrapper.
+	w = colorWriter(w)
 	return &REPL{
 		runtime:     rt,
 		reader:      r,
@@ -439,8 +443,20 @@ func (r *REPL) Run(ctx context.Context) error {
 				// Known command but bad args — show error and re-prompt.
 				fmt.Fprintf(r.writer, "Error: %v\n", err)
 				continue
+			} else if isLoneCommandToken(input) {
+				// A lone "/typo" is almost certainly a mistyped command, not a
+				// message. Suggest the nearest one instead of sending it to the
+				// model, which would waste a turn on "/stauts".
+				if sug, ok := suggestCommand(cmdName); ok {
+					fmt.Fprintf(r.writer, "%sUnknown command %s/%s%s. Did you mean %s/%s%s?  Type %s/help%s for the full list.%s\n",
+						cYellow, ansiBold, cmdName, ansiReset+cYellow, ansiBold, sug, ansiReset+cYellow, ansiBold, ansiReset+cYellow, ansiReset)
+				} else {
+					fmt.Fprintf(r.writer, "%sUnknown command %s/%s%s. Type %s/help%s for the full list.%s\n",
+						cYellow, ansiBold, cmdName, ansiReset+cYellow, ansiBold, ansiReset+cYellow, ansiReset)
+				}
+				continue
 			}
-			// If "unknown command", fall through — treat as normal input.
+			// If "unknown command" and not a lone token, fall through — treat as input.
 		}
 
 		// Feature 4: @general subagent inline — rewrite prompt for orchestrator
@@ -465,7 +481,7 @@ func (r *REPL) Run(ctx context.Context) error {
 
 		// Show spinner while waiting for first token
 		fmt.Fprintln(r.writer)
-		spin := NewSpinner(r.writer, "Thinking...")
+		spin := NewSpinner(r.writer, ThinkingMessage)
 
 		// Wire spinner to tool callback so it stops during tool execution
 		if tcb, ok := r.runtime.GetToolCb().(*TerminalToolCallback); ok {

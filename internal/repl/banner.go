@@ -14,8 +14,8 @@ const (
 	reset   = "\033[0m"
 	bold    = "\033[1m"
 	dim     = "\033[2m"
-	goBlueC = "\033[38;5;38m"  // Go blue #00ADD8
-	goTealC = "\033[38;5;37m"  // Go teal #00A29C
+	goBlueC = "\033[38;5;38m" // Go blue #00ADD8
+	goTealC = "\033[38;5;37m" // Go teal #00A29C
 	white   = "\033[38;5;255m"
 	gray    = "\033[38;5;242m"
 	green   = "\033[38;5;114m"
@@ -55,23 +55,28 @@ func PrintBanner(w io.Writer, cfg BannerConfig) {
 		branch = strings.TrimSpace(string(out))
 	}
 
-	// ASCII art logo in Go blue
-	logo := []string{
-		goBlueC + `   ██████   ██████   ██████  ██████  ██████  ███████` + reset,
-		goBlueC + `  ██       ██    ██ ██      ██    ██ ██   ██ ██     ` + reset,
-		goBlueC + `  ██   ███ ██    ██ ██      ██    ██ ██   ██ █████  ` + reset,
-		goBlueC + `  ██    ██ ██    ██ ██      ██    ██ ██   ██ ██     ` + reset,
-		goBlueC + `   ██████   ██████   ██████  ██████  ██████  ███████` + reset,
+	// Blue gopher beside a plain "gocode" wordmark. The gopher is gocode's own
+	// mark; two-tone blue stays readable on dark and light terminals. The
+	// wordmark is real text, not ASCII-art letters, so it always reads clearly.
+	eye := bold + white
+	wordmark := goBlueC + bold + "g" + goTealC + "o" + goBlueC + "c" + goTealC + "o" + goBlueC + "d" + goTealC + "e" + reset
+	art := []string{
+		"",
+		"   " + goBlueC + "╭──────╮" + reset + "    " + wordmark + "  " + gray + version + reset,
+		"   " + goBlueC + "│ " + eye + "●  ●" + reset + goBlueC + " │" + reset + "    " + gray + "the lightweight coding agent" + reset,
+		"   " + goBlueC + "│  " + goTealC + "◡" + goBlueC + "   │" + reset + "    " + green + "·" + reset + " " + gray + "~20 ms cold start  ·  8 MB binary  ·  no key needed" + reset,
+		"   " + goBlueC + "╰─" + goTealC + "⊂▬▬⊃" + goBlueC + "─╯" + reset,
+		"",
 	}
 
 	fmt.Fprintln(w)
-	for _, line := range logo {
+	for _, line := range art {
 		fmt.Fprintln(w, "  "+line)
 	}
 	fmt.Fprintln(w)
 
-	// Info line
-	fmt.Fprintf(w, "  %s%s%s %s%s%s", goBlueC+bold, version, reset, gray, cwd, reset)
+	// Info line — cwd and branch (version already shown in the wordmark).
+	fmt.Fprintf(w, "  %s%s%s", gray, cwd, reset)
 	if branch != "" {
 		fmt.Fprintf(w, " %s(%s)%s", goTealC, branch, reset)
 	}

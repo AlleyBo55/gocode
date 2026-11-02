@@ -35,7 +35,7 @@ func (d *Display) StreamEvent(ev apitypes.StreamEvent) {
 		if ev.ContentBlock != nil {
 			switch ev.ContentBlock.Kind {
 			case "tool_use":
-				fmt.Fprintf(d.w, "\n%s⚡ %s%s\n", cBlue, ev.ContentBlock.Name, ansiReset)
+				fmt.Fprintf(d.w, "\n%s⏺%s %s%s%s\n", cBlue, ansiReset, cWhite+ansiBold, ev.ContentBlock.Name, ansiReset)
 			case "thinking":
 				fmt.Fprintf(d.w, "%s💭 ", cGray+ansiDim)
 			}
@@ -57,7 +57,7 @@ func (d *Display) RenderResponse(resp *apitypes.MessageResponse) {
 			if len(block.Input) > 0 {
 				inputStr = string(block.Input)
 			}
-			fmt.Fprintf(d.w, "\n%s⚡ %s%s(%s)\n", cBlue, block.Name, ansiReset, cGray+summarizeJSON(inputStr)+ansiReset)
+			fmt.Fprintf(d.w, "\n%s⏺%s %s%s%s %s%s%s\n", cBlue, ansiReset, cWhite+ansiBold, block.Name, ansiReset, cGray, summarizeJSON(inputStr), ansiReset)
 		case "thinking":
 			fmt.Fprintf(d.w, "\n%s💭 %s%s\n", cGray+ansiDim, block.Thinking, ansiReset)
 		}
