@@ -42,12 +42,30 @@ type Result struct {
 	CostUSD      float64 `json:"cost_usd"`
 	Error        string  `json:"error,omitempty"`       // harness or agent failure, not a test failure
 	TestOutput   string  `json:"test_output,omitempty"` // tail of go test output when it failed
+
+	// Set by compare mode, which meters spend at the API.
+	Agent            string   `json:"agent,omitempty"`
+	Run              int      `json:"run,omitempty"`
+	Requests         int      `json:"requests,omitempty"`
+	CacheReadTokens  int      `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int      `json:"cache_write_tokens,omitempty"`
+	UnpricedModels   []string `json:"unpriced_models,omitempty"`
+	Skipped          bool     `json:"skipped,omitempty"` // never ran: interrupted or over budget
 }
 
 // Usage is what an agent run reports back about its spend.
 type Usage struct {
 	InputTokens  int
 	OutputTokens int
+
+	// Metered usage comes from the compare-mode proxy, which saw every API
+	// response the agent got; its CostUSD replaces the price-table estimate.
+	Metered          bool
+	CostUSD          float64
+	Requests         int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	UnpricedModels   []string
 }
 
 // Agent performs a task in workdir. The real one shells out to gocode; the
@@ -95,8 +113,9 @@ func LoadTasks(root string) ([]Task, error) {
 // RunTask copies the fixture to a scratch directory, lets the agent work in
 // it, restores the visible tests, adds the hidden ones, and runs go test.
 // The scratch directory is removed unless keep is set.
-func RunTask(ctx context.Context, t Task, model string, agent Agent, keep bool) Result {
-	res := Result{Task: t.ID, Model: model}
+func RunTask(ctx context.Context, t Task, model string, agent Agent, keep bool) (res Result) {
+	// Named result: the deferred duration write below must reach the caller.
+	res = Result{Task: t.ID, Model: model}
 	start := time.Now()
 	defer func() { res.Duration = time.Since(start).Seconds() }()
 
@@ -121,7 +140,11 @@ func RunTask(ctx context.Context, t Task, model string, agent Agent, keep bool) 
 	usage, agentErr := agent.Run(agentCtx, workdir, t.Prompt)
 	cancel()
 	res.InputTokens, res.OutputTokens = usage.InputTokens, usage.OutputTokens
-	if price, ok := apiclient.PriceForModel(model); ok {
+	res.Requests, res.CacheReadTokens, res.CacheWriteTokens = usage.Requests, usage.CacheReadTokens, usage.CacheWriteTokens
+	res.UnpricedModels = usage.UnpricedModels
+	if usage.Metered {
+		res.CostUSD = usage.CostUSD
+	} else if price, ok := apiclient.PriceForModel(model); ok {
 		res.CostUSD = (float64(usage.InputTokens)*price.Input + float64(usage.OutputTokens)*price.Output) / 1_000_000
 	}
 	if agentErr != nil {

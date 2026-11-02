@@ -126,6 +126,13 @@ type CacheControl struct {
 // EphemeralCache is the cache marker to attach to a block.
 func EphemeralCache() *CacheControl { return &CacheControl{Type: "ephemeral"} }
 
+// VolatileSystemHeading opens the last section of the system prompt: what
+// changes from run to run (working directory, date, git state). Anthropic's
+// provider caches only the text before it, so a run in another directory or
+// on another day still reads the instructions and tool schemas from cache.
+// Other providers send the prompt unchanged.
+const VolatileSystemHeading = "# Environment"
+
 // ToolDef is an LLM tool definition.
 type ToolDef struct {
 	Name        string          `json:"name"`

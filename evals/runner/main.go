@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -24,12 +25,30 @@ func main() {
 	maxTurns := flag.Int("max-turns", 40, "agent loop iterations per task")
 	outDir := flag.String("out", "", "results directory; default evals/results in this checkout")
 	keep := flag.Bool("keep", false, "keep scratch directories for inspection")
+	var agents multiFlag
+	flag.Var(&agents, "agent", "compare agent CLIs on one model instead of models on gocode: gocode, opencode, crush or claurst, optionally name=/path/to/binary (repeatable)")
+	runs := flag.Int("runs", 1, "with -agent: sweeps over the task set")
+	budget := flag.Float64("budget", 10, "with -agent: stop sending API requests once metered spend reaches this many USD (0 = no limit)")
+	var agentPath multiFlag
+	flag.Var(&agentPath, "agent-path", "with -agent: directory to put first on the agents' PATH, e.g. one holding rg (repeatable)")
+	catalog := flag.String("models-catalog", "", "with -agent: a models.dev api.json for agents that read one offline (claurst)")
 	flag.Parse()
 
 	if len(models) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: go run ./evals/runner -model <alias-or-id> [-model ...]")
+		fmt.Fprintln(os.Stderr, "       go run ./evals/runner -model <claude-model> -agent gocode -agent opencode ...")
 		fmt.Fprintln(os.Stderr, "This spends tokens: roughly 13 agent runs per model, each a small Go task.")
 		os.Exit(2)
+	}
+	var specs []agentSpec
+	if len(agents) > 0 {
+		if len(models) != 1 {
+			fatal("-agent compares agents on one model; pass exactly one -model")
+		}
+		var err error
+		if specs, err = parseAgentSpecs(agents); err != nil {
+			fatal("%v", err)
+		}
 	}
 
 	root, err := moduleRoot()
@@ -46,14 +65,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if *binary == "" {
+	needGocode := len(specs) == 0 || slices.ContainsFunc(specs, func(s agentSpec) bool { return s.Name == "gocode" && s.Binary == "" })
+	if *binary == "" && needGocode {
 		*binary, err = buildGocode(ctx, root)
 		if err != nil {
 			fatal("building gocode: %v", err)
 		}
 		defer os.RemoveAll(filepath.Dir(*binary))
 	}
-	version := gocodeVersion(ctx, *binary)
 
 	tasks, err := LoadTasks(*tasksDir)
 	if err != nil {
@@ -63,6 +82,24 @@ func main() {
 	if len(tasks) == 0 {
 		fatal("no tasks selected")
 	}
+
+	if len(specs) > 0 {
+		for i := range specs {
+			if specs[i].Name == "gocode" && specs[i].Binary == "" {
+				specs[i].Binary = *binary
+			}
+		}
+		err := runCompare(ctx, compareConfig{
+			Model: models[0], Agents: specs, Tasks: tasks, Runs: max(*runs, 1),
+			Parallel: *parallel, MaxTurns: *maxTurns, BudgetUSD: *budget, OutDir: *outDir,
+			Keep: *keep, AgentPath: agentPath, Catalog: *catalog,
+		})
+		if err != nil {
+			fatal("compare: %v", err)
+		}
+		return
+	}
+	version := gocodeVersion(ctx, *binary)
 
 	fmt.Fprintf(os.Stderr, "gocode %s, %d tasks, %d model(s), parallel=%d\n", version, len(tasks), len(models), *parallel)
 	byModel := map[string][]Result{}

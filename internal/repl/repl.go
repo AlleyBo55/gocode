@@ -3,6 +3,7 @@ package repl
 import (
 	"bufio"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1185,8 +1186,17 @@ func RunOneShot(ctx context.Context, rt *agent.ConversationRuntime, prompt strin
 // SkipProjectConfig disables loading GOCODE.md/CLAUDE.md into the system prompt.
 var SkipProjectConfig bool
 
-// BuildSystemPrompt constructs the system prompt for the agent.
-// Modeled after Claude Code's agentic behavior — proactive, autonomous, thorough.
+// noOverthinkRules is rules/no-overthink.md from
+// github.com/AlleyBo55/no-overthink (6591c77), always on in gocode. Copy the
+// file again to update it.
+//
+//go:embed no_overthink.md
+var noOverthinkRules string
+
+// BuildSystemPrompt constructs the system prompt for the agent: stable
+// instructions, the no-overthink rules and the tool list first, then project
+// instructions and memory, and the run-specific environment last so the
+// stable part can be cached across runs.
 // When REA tools are connected and the model has a defined REA workflow, the
 // matching REA mode prompt (investigator / adversarial reviewer / rebuilder) is
 // appended so the agent adopts that role automatically.
@@ -1210,7 +1220,9 @@ func BuildSystemPrompt(tools []apitypes.ToolDef, model string) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf(`You are gocode, an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
-IMPORTANT: You should be proactive in accomplishing the task, not reactive. Do not wait for the user to ask you to do something that you can anticipate.
+IMPORTANT: Carry the task the user asked for through to the end. Do not wait to be prompted for each step.
+
+%s
 
 # Language Rules
 
@@ -1253,22 +1265,15 @@ When making code changes:
 # Communication Style
 
 1. Be concise and direct. Avoid unnecessary preamble or filler.
-2. When you have completed a task, briefly summarize what you did. Do not list every step.
+2. When you have completed a task, lead with the result in a sentence or two. Do not list every step.
 3. If something fails, explain what went wrong and what you tried.
 4. Use markdown formatting in responses when it improves readability.
 5. NEVER say "Let me know if you'd like me to..." or "Would you like me to..." — just do it.
 6. NEVER ask "Shall I proceed?" or "Should I continue?" — just proceed.
 
-# Environment
-
-- Working directory: %s
-- OS: %s
-- Shell: %s
-- Current date: %s
-
 # CRITICAL: Tool Results Override Training Data
 
-Your training data has a knowledge cutoff. The current date is %s. When you use WebSearchTool and receive results, you MUST use those results as the source of truth. NEVER override search results with your training data. If search results say something different from what you "know", the search results are correct because they are current.
+Your training data has a knowledge cutoff. The current date is in the Environment section at the end of this prompt. When you use WebSearchTool and receive results, you MUST use those results as the source of truth. NEVER override search results with your training data. If search results say something different from what you "know", the search results are correct because they are current.
 
 When WebSearchTool returns results, read EVERY line carefully. The answer is often in the Wikipedia summary or in the related articles section. Do not say "information not found" if the search results contain the answer — even if it's in a related article or a different section.
 
@@ -1276,20 +1281,7 @@ If the first search doesn't give a clear answer, you MUST search again with a di
 
 # Available Tools
 
-%s`, cwd, osName, shell, currentDate, currentDate, toolList.String()))
-
-	// Git context
-	if branch, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
-		gitBranch := strings.TrimSpace(string(branch))
-		// also get short status
-		status, _ := exec.Command("git", "status", "--short").Output()
-		statusLines := strings.Split(strings.TrimSpace(string(status)), "\n")
-		changedFiles := len(statusLines)
-		if statusLines[0] == "" {
-			changedFiles = 0
-		}
-		sb.WriteString(fmt.Sprintf("\n# Git\n- Branch: %s\n- Changed files: %d\n", gitBranch, changedFiles))
-	}
+%s`, strings.TrimSpace(noOverthinkRules), toolList.String()))
 
 	// Load project config (CLAUDE.md or GOCODE.md)
 	if !SkipProjectConfig {
@@ -1316,6 +1308,23 @@ If the first search doesn't give a clear answer, you MUST search again with a di
 		if prompt := reaWorkflowForModel(model); prompt != "" {
 			sb.WriteString("\n\n" + prompt + "\n")
 		}
+	}
+
+	// Run-specific context goes last. Anthropic caches the prompt only up to
+	// apitypes.VolatileSystemHeading, so everything above stays one cache
+	// entry across runs in other directories, on other days, or with other
+	// git state.
+	sb.WriteString(fmt.Sprintf("\n\n%s\n\n- Working directory: %s\n- OS: %s\n- Shell: %s\n- Current date: %s\n",
+		apitypes.VolatileSystemHeading, cwd, osName, shell, currentDate))
+	if branch, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+		gitBranch := strings.TrimSpace(string(branch))
+		status, _ := exec.Command("git", "status", "--short").Output()
+		statusLines := strings.Split(strings.TrimSpace(string(status)), "\n")
+		changedFiles := len(statusLines)
+		if statusLines[0] == "" {
+			changedFiles = 0
+		}
+		sb.WriteString(fmt.Sprintf("\n# Git\n- Branch: %s\n- Changed files: %d\n", gitBranch, changedFiles))
 	}
 
 	return sb.String()
