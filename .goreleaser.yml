@@ -40,6 +40,18 @@ nfpms:
 checksum:
   name_template: "checksums.txt"
 
+release:
+  header: |
+    Install:
+
+        go install github.com/AlleyBo55/gocode/cmd/gocode@latest
+
+    or download a binary below. Full notes for this release are in
+    [CHANGELOG.md](https://github.com/AlleyBo55/gocode/blob/master/CHANGELOG.md).
+
+    Start with no API key at all: install [Ollama](https://ollama.com),
+    `ollama pull qwen2.5-coder:7b`, then run `gocode`.
+
 changelog:
   sort: asc
   filters:

@@ -34,6 +34,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/doctor"
 	"github.com/AlleyBo55/gocode/internal/editorcompat"
 	"github.com/AlleyBo55/gocode/internal/execution"
+	goalpkg "github.com/AlleyBo55/gocode/internal/goal"
 	"github.com/AlleyBo55/gocode/internal/hashline"
 	"github.com/AlleyBo55/gocode/internal/hooks"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
@@ -47,6 +48,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/plugins"
 	"github.com/AlleyBo55/gocode/internal/profiles"
 	"github.com/AlleyBo55/gocode/internal/queryengine"
+	reapkg "github.com/AlleyBo55/gocode/internal/rea"
 	"github.com/AlleyBo55/gocode/internal/repl"
 	"github.com/AlleyBo55/gocode/internal/runtime"
 	"github.com/AlleyBo55/gocode/internal/session"
@@ -930,6 +932,11 @@ so. With nothing set up at all, it prints three ways to get started.`,
 			}
 			r.SetBuddy(buddy.RollCompanion(userID))
 
+			// Wire the persistent goal tracker for /goal support.
+			if gt, gtErr := goalpkg.NewTracker(filepath.Join(".gocode")); gtErr == nil {
+				r.SetGoalTracker(gt)
+			}
+
 			return r.Run(context.Background())
 		},
 	}
@@ -1365,6 +1372,88 @@ once per model. Pass --refresh to probe again.`,
 	mcpServeCmd.Flags().String("transport", "stdio", "Transport type: stdio or http")
 	mcpServeCmd.Flags().String("addr", ":8080", "HTTP listen address (only for http transport)")
 	rootCmd.AddCommand(mcpServeCmd)
+
+	// 21b. rea — built-in REA (Reverse Engineer Anything) MCP integration.
+	// gocode launches an installed REA as a stdio MCP subprocess; it does not
+	// vendor REA. Point these tools only at artifacts you are authorized to analyze.
+	reaCmd := &cobra.Command{
+		Use:   "rea",
+		Short: "Reverse-engineering tools via REA (built-in MCP integration)",
+	}
+	reaCmd.AddCommand(&cobra.Command{
+		Use:   "setup",
+		Short: "Detect REA and register it as a built-in MCP server (.gocode/mcp.json)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			inst, err := reapkg.Detect()
+			if err != nil {
+				return err
+			}
+			command, cmdArgs := inst.Command()
+			def := mcpclient.ServerDef{Name: "rea", Command: command, Args: cmdArgs, Framing: "ndjson"}
+
+			cfgPath := filepath.Join(".gocode", "mcp.json")
+			var cfg mcpclient.ClientConfig
+			if data, rerr := os.ReadFile(cfgPath); rerr == nil {
+				_ = json.Unmarshal(data, &cfg)
+			}
+			kept := make([]mcpclient.ServerDef, 0, len(cfg.Servers)+1)
+			for _, s := range cfg.Servers {
+				if s.Name != "rea" {
+					kept = append(kept, s)
+				}
+			}
+			cfg.Servers = append(kept, def)
+
+			if mkErr := os.MkdirAll(".gocode", 0o755); mkErr != nil {
+				return mkErr
+			}
+			data, _ := json.MarshalIndent(cfg, "", "  ")
+			if wErr := os.WriteFile(cfgPath, data, 0o644); wErr != nil {
+				return wErr
+			}
+			fmt.Printf("✓ REA registered as a built-in MCP server.\n")
+			fmt.Printf("  node:   %s (%s)\n", inst.NodePath, inst.NodeVersion)
+			fmt.Printf("  script: %s\n", inst.ScriptPath)
+			fmt.Printf("  config: %s\n\n", cfgPath)
+			fmt.Printf("gocode chat will now auto-connect to REA and expose its tools as mcp_rea_*.\n")
+			fmt.Printf("Run 'gocode rea status' to verify the connection.\n")
+			return nil
+		},
+	})
+	reaCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Verify the REA integration end-to-end (detect + live MCP handshake)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			inst, err := reapkg.Detect()
+			if err != nil {
+				fmt.Printf("REA not detected: %v\n", err)
+				return nil
+			}
+			fmt.Printf("Detected REA:\n  node:   %s (%s)\n  script: %s\n", inst.NodePath, inst.NodeVersion, inst.ScriptPath)
+
+			command, cmdArgs := inst.Command()
+			mgr := mcpclient.NewManagerWithConfig(mcpclient.ClientConfig{
+				Servers: []mcpclient.ServerDef{{Name: "rea", Command: command, Args: cmdArgs, Framing: "ndjson"}},
+			})
+			fmt.Print("Connecting over MCP (ndjson stdio)... ")
+			if connErr := mgr.ConnectAll(); connErr != nil {
+				fmt.Printf("FAILED\n  %v\n", connErr)
+				return nil
+			}
+			defer mgr.Close()
+			tools := mgr.ListTools()
+			fmt.Printf("OK\n  tools discovered: %d\n", len(tools))
+			for i, t := range tools {
+				if i >= 5 {
+					fmt.Printf("    ... and %d more\n", len(tools)-5)
+					break
+				}
+				fmt.Printf("    - %s\n", t.Name)
+			}
+			return nil
+		},
+	})
+	rootCmd.AddCommand(reaCmd)
 
 	// --- Feature 5: serve — HTTP REST API server ---
 	serveCmd := &cobra.Command{
