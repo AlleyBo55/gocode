@@ -9,10 +9,10 @@ All notable changes to gocode are documented here.
 *The MCP client now speaks the stdio standard by default, `/plan` stops being a stub, and the `/goal` and REA work merged since v0.10.0 ships.*
 
 ### Behaviour change
-- **MCP stdio servers default to newline-delimited JSON.** Until now gocode wrote LSP-style `Content-Length` frames to every server in `.gocode/mcp.json`. The MCP stdio transport is newline-delimited, so the reference servers, REA, and gocode's own `gocode mcp-serve` never answered, and `gocode chat` waited forever at startup. A server that really needs the old frames can set `"framing": "content-length"`. Responses are read in either framing whatever the setting.
+- **MCP stdio servers default to newline-delimited JSON.** Until now gocode wrote LSP-style `Content-Length` frames to every server in `.gocode/mcp.json`. The MCP stdio transport is newline-delimited, so standard servers did not work: gocode's own `gocode mcp-serve` rejected the handshake with a parse error, and REA never answered, which left `gocode chat` waiting at startup with no timeout. A server that really needs the old frames can set `"framing": "content-length"`. Responses are read in either framing whatever the setting.
 
 ### Fixed
-- **A silent MCP server can no longer hang startup.** `initialize` plus `tools/list` must finish within 30 seconds (enough for an `npx` first-run download); otherwise the server is killed, skipped, and the log says why.
+- **A silent MCP server can no longer hang startup.** `initialize` plus `tools/list` must finish within 30 seconds; otherwise the server is killed, skipped, and the log says why. The window includes any `npx` first-run download, so on a slow connection run the server once by hand first to fill the npx cache.
 - **Server notifications no longer break a request.** A logging or `list_changed` notification arriving before a response was taken as the response. The client now reads until the message carrying its own request id arrives.
 
 ### Added
