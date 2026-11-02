@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/AlleyBo55/gocode/internal/apitypes"
@@ -220,4 +221,31 @@ func containsKey(v any, key string) bool {
 		}
 	}
 	return false
+}
+
+func TestAnthropicSystemCachesOnlyTheStablePrefix(t *testing.T) {
+	stable := "You are gocode.\n\n# Tools\n- read_file\n"
+	volatile := apitypes.VolatileSystemHeading + "\n\n- Working directory: /tmp/run-7\n- Current date: November 2, 2026\n"
+	wire := anthropicWireRequest(apitypes.MessageRequest{Model: "m", System: stable + "\n" + volatile, Messages: conversation()}, true)
+
+	if len(wire.System) != 2 {
+		t.Fatalf("system = %+v, want a cached block and an uncached one", wire.System)
+	}
+	if wire.System[0].CacheControl == nil || wire.System[1].CacheControl != nil {
+		t.Errorf("only the first block may carry the marker: %+v", wire.System)
+	}
+	if !strings.HasPrefix(wire.System[1].Text, apitypes.VolatileSystemHeading) || strings.Contains(wire.System[0].Text, "/tmp/run-7") {
+		t.Errorf("split in the wrong place: %+v", wire.System)
+	}
+	if got := wire.System[0].Text + wire.System[1].Text; got != stable+"\n"+volatile {
+		t.Errorf("split changed the prompt text:\n%q", got)
+	}
+
+	// Caching off, or nothing before the heading: one block, as before.
+	if plain := anthropicWireRequest(apitypes.MessageRequest{Model: "m", System: stable + "\n" + volatile}, false); len(plain.System) != 1 {
+		t.Errorf("caching off: system = %+v", plain.System)
+	}
+	if only := anthropicWireRequest(apitypes.MessageRequest{Model: "m", System: "\n" + volatile}, true); len(only.System) != 1 || only.System[0].CacheControl == nil {
+		t.Errorf("heading with no stable text before it: system = %+v", only.System)
+	}
 }

@@ -1,6 +1,8 @@
 package apiclient
 
 import (
+	"strings"
+
 	"github.com/AlleyBo55/gocode/internal/apitypes"
 )
 
@@ -14,6 +16,8 @@ import (
 //
 //   1. On the system prompt. The cache prefix is ordered tools, then system,
 //      then messages, so a breakpoint here covers the tool schemas as well.
+//      It sits before the run-specific environment section, so other runs
+//      (another directory, another day) hit the same cache entry.
 //   2. On the last block of the last message. Everything before the newest
 //      user turn was already sent last turn and is a cache hit.
 //
@@ -55,16 +59,34 @@ func anthropicWireRequest(req apitypes.MessageRequest, cache bool) anthropicRequ
 		Stream:     req.Stream,
 	}
 	if req.System != "" {
-		block := apitypes.InputContentBlock{Kind: "text", Text: req.System}
-		if cache {
-			block.CacheControl = apitypes.EphemeralCache()
-		}
-		out.System = []apitypes.InputContentBlock{block}
+		out.System = systemBlocks(req.System, cache)
 	}
 	if cache && len(req.Messages) > 0 {
 		out.Messages = withTrailingBreakpoint(req.Messages)
 	}
 	return out
+}
+
+// systemBlocks turns the system prompt into wire blocks. With caching on, the
+// run-specific tail that starts at VolatileSystemHeading goes in a second,
+// unmarked block, so the cached prefix is the same for every run that shares
+// the instructions and tools. The two blocks hold exactly the original text.
+func systemBlocks(system string, cache bool) []apitypes.InputContentBlock {
+	if !cache {
+		return []apitypes.InputContentBlock{{Kind: "text", Text: system}}
+	}
+	stable, volatile := system, ""
+	if i := strings.LastIndex(system, "\n"+apitypes.VolatileSystemHeading+"\n"); i >= 0 {
+		stable, volatile = system[:i+1], system[i+1:]
+	}
+	// The API rejects whitespace-only text blocks.
+	if strings.TrimSpace(stable) == "" || strings.TrimSpace(volatile) == "" {
+		return []apitypes.InputContentBlock{{Kind: "text", Text: system, CacheControl: apitypes.EphemeralCache()}}
+	}
+	return []apitypes.InputContentBlock{
+		{Kind: "text", Text: stable, CacheControl: apitypes.EphemeralCache()},
+		{Kind: "text", Text: volatile},
+	}
 }
 
 // withTrailingBreakpoint returns messages with a cache marker on the final
