@@ -103,6 +103,10 @@ type ServerDef struct {
 	Command string            `json:"command"`
 	Args    []string          `json:"args,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+	// Framing selects the stdio transport framing. Empty (default) keeps the
+	// original LSP-style Content-Length framing; "ndjson" uses newline-delimited
+	// JSON, which is the MCP stdio standard that servers such as REA speak.
+	Framing string `json:"framing,omitempty"`
 }
 
 // --- Server connection ---
@@ -124,7 +128,78 @@ func (sc *ServerConn) nextRequestID() int64 {
 	return atomic.AddInt64(&sc.nextID, 1)
 }
 
-// send writes a JSON-RPC request using Content-Length framing and reads the response.
+// writeMessage frames and writes a JSON-RPC message per the server's transport.
+// Empty Framing uses LSP-style Content-Length framing (gocode's original
+// behavior); "ndjson" uses newline-delimited JSON, the MCP stdio standard that
+// servers such as REA speak. The caller must hold sc.mu.
+func (sc *ServerConn) writeMessage(body []byte) error {
+	if sc.def.Framing == "ndjson" {
+		if _, err := sc.stdin.Write(append(body, '\n')); err != nil {
+			sc.alive = false
+			return err
+		}
+		return nil
+	}
+	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
+	if _, err := io.WriteString(sc.stdin, header); err != nil {
+		sc.alive = false
+		return err
+	}
+	if _, err := sc.stdin.Write(body); err != nil {
+		sc.alive = false
+		return err
+	}
+	return nil
+}
+
+// readMessage reads one framed JSON-RPC message per the server's transport.
+// The caller must hold sc.mu.
+func (sc *ServerConn) readMessage() ([]byte, error) {
+	if sc.def.Framing == "ndjson" {
+		for {
+			line, err := sc.stdout.ReadString('\n')
+			if err != nil {
+				sc.alive = false
+				return nil, err
+			}
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			return []byte(trimmed), nil
+		}
+	}
+	contentLen := 0
+	for {
+		line, err := sc.stdout.ReadString('\n')
+		if err != nil {
+			sc.alive = false
+			return nil, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break
+		}
+		if strings.HasPrefix(line, "Content-Length:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
+			if _, err := fmt.Sscanf(val, "%d", &contentLen); err != nil {
+				return nil, fmt.Errorf("parsing Content-Length: %w", err)
+			}
+		}
+	}
+	if contentLen <= 0 {
+		return nil, fmt.Errorf("invalid Content-Length %d", contentLen)
+	}
+	respBody := make([]byte, contentLen)
+	if _, err := io.ReadFull(sc.stdout, respBody); err != nil {
+		sc.alive = false
+		return nil, err
+	}
+	return respBody, nil
+}
+
+// send writes a JSON-RPC request and reads the response, framed per the
+// server's transport (Content-Length by default, ndjson when configured).
 func (sc *ServerConn) send(method string, params interface{}) (*jsonRPCResponse, error) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
@@ -147,45 +222,13 @@ func (sc *ServerConn) send(method string, params interface{}) (*jsonRPCResponse,
 	}
 
 	// Write with Content-Length header (LSP/MCP framing)
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
-	if _, err := io.WriteString(sc.stdin, header); err != nil {
-		sc.alive = false
-		return nil, fmt.Errorf("writing header to server %q: %w", sc.def.Name, err)
-	}
-	if _, err := sc.stdin.Write(body); err != nil {
-		sc.alive = false
-		return nil, fmt.Errorf("writing body to server %q: %w", sc.def.Name, err)
+	if err := sc.writeMessage(body); err != nil {
+		return nil, fmt.Errorf("writing request to server %q: %w", sc.def.Name, err)
 	}
 
-	// Read response with Content-Length framing
-	contentLen := 0
-	for {
-		line, err := sc.stdout.ReadString('\n')
-		if err != nil {
-			sc.alive = false
-			return nil, fmt.Errorf("reading response header from server %q: %w", sc.def.Name, err)
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			// Empty line separates headers from body
-			break
-		}
-		if strings.HasPrefix(line, "Content-Length:") {
-			val := strings.TrimSpace(strings.TrimPrefix(line, "Content-Length:"))
-			if _, err := fmt.Sscanf(val, "%d", &contentLen); err != nil {
-				return nil, fmt.Errorf("parsing Content-Length from server %q: %w", sc.def.Name, err)
-			}
-		}
-	}
-
-	if contentLen <= 0 {
-		return nil, fmt.Errorf("invalid Content-Length %d from server %q", contentLen, sc.def.Name)
-	}
-
-	respBody := make([]byte, contentLen)
-	if _, err := io.ReadFull(sc.stdout, respBody); err != nil {
-		sc.alive = false
-		return nil, fmt.Errorf("reading response body from server %q: %w", sc.def.Name, err)
+	respBody, err := sc.readMessage()
+	if err != nil {
+		return nil, fmt.Errorf("reading response from server %q: %w", sc.def.Name, err)
 	}
 
 	var resp jsonRPCResponse
@@ -266,6 +309,16 @@ func NewManager(configPath string) (*Manager, error) {
 	}
 
 	return m, nil
+}
+
+// NewManagerWithConfig creates a manager from an in-memory config, without
+// reading a file. Useful for wiring a known server (e.g. the built-in REA
+// integration) or for verifying a single server end-to-end.
+func NewManagerWithConfig(cfg ClientConfig) *Manager {
+	return &Manager{
+		servers: make(map[string]*ServerConn),
+		config:  cfg,
+	}
 }
 
 // ConnectAll spawns all configured servers, performs the initialize handshake,
@@ -364,9 +417,7 @@ func (m *Manager) sendNotification(sc *ServerConn, method string, params interfa
 	}
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
-	io.WriteString(sc.stdin, header)
-	sc.stdin.Write(body)
+	_ = sc.writeMessage(body)
 }
 
 // initializeHandshake performs the MCP initialize handshake and verifies protocol version.

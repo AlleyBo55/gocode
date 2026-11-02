@@ -7,6 +7,9 @@ func TestParseSlashCommand_UltraPlan(t *testing.T) {
 		input string
 		want  SlashCommand
 	}{
+		{"/goal", CmdGoal},
+		{"/goal add tests to auth --budget 50000", CmdGoal},
+		{"/goal pause", CmdGoal},
 		{"/ultraplan", CmdUltraPlan},
 		{"/ultraplan refactor the auth module", CmdUltraPlan},
 		{"/ULTRAPLAN", CmdUltraPlan},

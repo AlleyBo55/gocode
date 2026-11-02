@@ -21,6 +21,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/checkpoint"
 	"github.com/AlleyBo55/gocode/internal/customcmd"
 	"github.com/AlleyBo55/gocode/internal/dream"
+	"github.com/AlleyBo55/gocode/internal/goal"
 	"github.com/AlleyBo55/gocode/internal/initdeep"
 	"github.com/AlleyBo55/gocode/internal/memory"
 	"github.com/AlleyBo55/gocode/internal/outputstyles"
@@ -56,6 +57,8 @@ type REPL struct {
 	vimState     *vim.PersistentState
 	outputStyle  string
 	buddy        *buddy.Companion
+	goalTracker  *goal.Tracker
+	goalLastTokens int
 }
 
 // NewREPL creates a new REPL.
@@ -106,6 +109,11 @@ func (r *REPL) SetOutputStyle(style string) {
 // SetBuddy sets the terminal companion displayed in the banner.
 func (r *REPL) SetBuddy(b *buddy.Companion) {
 	r.buddy = b
+}
+
+// SetGoalTracker sets the persistent goal tracker for /goal support.
+func (r *REPL) SetGoalTracker(t *goal.Tracker) {
+	r.goalTracker = t
 }
 
 // buddyLine returns a short summary string for the banner, or empty if no buddy is set.
@@ -208,6 +216,7 @@ func (r *REPL) Run(ctx context.Context) error {
 			fmt.Fprintln(r.writer, "  /worktree    Manage git worktrees")
 			fmt.Fprintln(r.writer, "  /voice       Toggle voice input")
 			fmt.Fprintln(r.writer, "  /ultraplan   Deep planning with powerful model")
+			fmt.Fprintln(r.writer, "  /goal        Set a persistent objective (pause/resume/clear, token budget)")
 			fmt.Fprintln(r.writer, "  /vim         Toggle vim keybindings")
 			fmt.Fprintln(r.writer, "  /output-style Show or switch output style")
 			// Append custom commands to help output.
@@ -324,6 +333,9 @@ func (r *REPL) Run(ctx context.Context) error {
 		case CmdOutputStyle:
 			r.handleOutputStyleCommand(input)
 			continue
+		case CmdGoal:
+			r.handleGoalCommand(input)
+			continue
 		case CmdUltraPlan:
 			taskDesc := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/ultraplan"))
 			if taskDesc == "" {
@@ -431,6 +443,14 @@ func (r *REPL) Run(ctx context.Context) error {
 			input = "Use a sub-agent to handle this complex task: " + strings.TrimSpace(input)
 		}
 
+		// Goal-driven loop: when a goal is active, inject its objective ahead of
+		// the user's message so the agent keeps driving across turns.
+		if r.goalTracker != nil && r.goalTracker.Active() {
+			if drive := r.goalTracker.DrivePrompt(); drive != "" {
+				input = drive + "\n\n" + input
+			}
+		}
+
 		// Show spinner while waiting for first token
 		fmt.Fprintln(r.writer)
 		spin := NewSpinner(r.writer, "Thinking...")
@@ -508,6 +528,19 @@ func (r *REPL) Run(ctx context.Context) error {
 		} // no text was streamed
 		cancel()
 		fmt.Fprintln(r.writer)
+
+		// Goal tracking: record the turn's tokens against the budget and, when a
+		// goal is active, inject its objective so the next turn keeps driving.
+		if r.goalTracker != nil {
+			usage := r.runtime.GetUsage()
+			total := usage.TotalTokens()
+			turnTokens := total - r.goalLastTokens
+			r.goalLastTokens = total
+			_ = r.goalTracker.AddUsage(turnTokens)
+			if r.goalTracker.BudgetExceeded() {
+				fmt.Fprintf(r.writer, "%s⚠ Goal token budget reached; goal paused. Use /goal resume to continue.%s\n", cYellow, ansiReset)
+			}
+		}
 
 		// Context window management: check if session is approaching the limit
 		estimatedTokens := r.runtime.EstimateSessionTokens()
@@ -761,6 +794,80 @@ func (r *REPL) handleWorktreeCommand(input string) {
 	}
 
 	fmt.Fprintln(r.writer, "Usage: /worktree create <branch> | /worktree list")
+}
+
+// handleGoalCommand processes the /goal slash command.
+// Subcommands: set an objective (default), status, pause, resume, done, blocked, clear.
+func (r *REPL) handleGoalCommand(input string) {
+	if r.goalTracker == nil {
+		fmt.Fprintln(r.writer, "Goal tracking is not configured.")
+		return
+	}
+	arg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/goal"))
+
+	if arg == "" || arg == "status" {
+		fmt.Fprint(r.writer, r.goalTracker.Render())
+		return
+	}
+	switch {
+	case arg == "pause":
+		if err := r.goalTracker.Pause(); err != nil {
+			fmt.Fprintf(r.writer, "Error: %v\n", err)
+		} else {
+			fmt.Fprintln(r.writer, "Goal paused. Use /goal resume to continue.")
+		}
+		return
+	case arg == "resume":
+		if err := r.goalTracker.Resume(); err != nil {
+			fmt.Fprintf(r.writer, "Error: %v\n", err)
+		} else {
+			fmt.Fprintln(r.writer, "Goal resumed.")
+		}
+		return
+	case arg == "clear":
+		if err := r.goalTracker.Clear(); err != nil {
+			fmt.Fprintf(r.writer, "Error: %v\n", err)
+		} else {
+			fmt.Fprintln(r.writer, "Goal cleared.")
+		}
+		return
+	case strings.HasPrefix(arg, "done"):
+		note := strings.TrimSpace(strings.TrimPrefix(arg, "done"))
+		if err := r.goalTracker.Complete(note); err != nil {
+			fmt.Fprintf(r.writer, "Error: %v\n", err)
+		} else {
+			fmt.Fprintln(r.writer, "Goal marked done.")
+		}
+		return
+	case strings.HasPrefix(arg, "blocked"):
+		reason := strings.TrimSpace(strings.TrimPrefix(arg, "blocked"))
+		if err := r.goalTracker.Block(reason); err != nil {
+			fmt.Fprintf(r.writer, "Error: %v\n", err)
+		} else {
+			fmt.Fprintln(r.writer, "Goal marked blocked.")
+		}
+		return
+	}
+
+	// Otherwise set a new objective. Optional "--budget N" caps tokens.
+	budget := 0
+	objective := arg
+	if i := strings.Index(arg, "--budget "); i >= 0 {
+		objective = strings.TrimSpace(arg[:i])
+		rest := strings.TrimSpace(arg[i+len("--budget "):])
+		if n, err := strconv.Atoi(strings.Fields(rest+" ")[0]); err == nil {
+			budget = n
+		}
+	}
+	if err := r.goalTracker.Set(objective, budget); err != nil {
+		fmt.Fprintf(r.writer, "Error: %v\n", err)
+		return
+	}
+	if budget > 0 {
+		fmt.Fprintf(r.writer, "Goal set (budget %d tokens): %s\n", budget, objective)
+	} else {
+		fmt.Fprintf(r.writer, "Goal set: %s\n", objective)
+	}
 }
 
 // handleVoiceCommand toggles voice input mode.

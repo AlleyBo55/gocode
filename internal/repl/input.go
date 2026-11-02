@@ -37,6 +37,7 @@ const (
 	CmdUltraPlan
 	CmdVim
 	CmdOutputStyle
+	CmdGoal
 )
 
 // ParseSlashCommand checks if input is a slash command.
@@ -76,6 +77,9 @@ func ParseSlashCommand(input string) SlashCommand {
 	}
 	if lower == "/undo" || strings.HasPrefix(lower, "/undo ") {
 		return CmdUndo
+	}
+	if lower == "/goal" || strings.HasPrefix(lower, "/goal ") {
+		return CmdGoal
 	}
 	switch lower {
 	case "/exit":
