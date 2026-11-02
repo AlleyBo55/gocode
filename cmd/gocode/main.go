@@ -810,7 +810,7 @@ so. With nothing set up at all, it prints three ways to get started.`,
 				log.Printf("[skills] %v", e)
 			}
 
-			systemPrompt := repl.BuildSystemPrompt(mainExec.ListTools())
+			systemPrompt := repl.BuildSystemPrompt(mainExec.ListTools(), resolvedModel)
 
 			// If --skill flag is provided, prepend the skill's system prompt
 			if skillName != "" {
@@ -1250,7 +1250,7 @@ once per model. Pass --refresh to probe again.`,
 				log.Printf("[skills] %v", e)
 			}
 
-			systemPrompt := repl.BuildSystemPrompt(mainExec.ListTools())
+			systemPrompt := repl.BuildSystemPrompt(mainExec.ListTools(), resolvedModel)
 
 			// If --skill flag is provided, prepend the skill's system prompt
 			if skillName != "" {
