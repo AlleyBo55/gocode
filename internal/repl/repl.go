@@ -28,6 +28,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/outputstyles"
 	"github.com/AlleyBo55/gocode/internal/skills"
 	"github.com/AlleyBo55/gocode/internal/tasks"
+	"github.com/AlleyBo55/gocode/internal/textutil"
 	"github.com/AlleyBo55/gocode/internal/ultraplan"
 	"github.com/AlleyBo55/gocode/internal/vim"
 	"github.com/AlleyBo55/gocode/internal/voice"
@@ -661,14 +662,11 @@ func (r *REPL) handleSkillCommand(input string) {
 	fmt.Fprintf(r.writer, "Skill %s%s%s activated.\n", cGreen+ansiBold, found.Name, ansiReset)
 }
 
-// truncateSkillDesc shortens a string to maxLen characters, appending "..." if truncated.
+// truncateSkillDesc shortens a description to maxLen characters for the /skills
+// list, collapsing it to one line first. Counted in runes so a CJK or emoji
+// description is cut between characters, not inside one.
 func truncateSkillDesc(s string, maxLen int) string {
-	// Collapse to single line for display.
-	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
+	return textutil.Truncate(strings.ReplaceAll(s, "\n", " "), maxLen)
 }
 
 // handleModelCommand processes the /model slash command.
@@ -1328,12 +1326,4 @@ If the first search doesn't give a clear answer, you MUST search again with a di
 	}
 
 	return sb.String()
-}
-
-// truncateLog truncates a string for log output.
-func truncateLog(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
 }

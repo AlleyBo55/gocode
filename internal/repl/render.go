@@ -3,6 +3,8 @@ package repl
 import (
 	"fmt"
 	"strings"
+
+	"github.com/AlleyBo55/gocode/internal/textutil"
 )
 
 // ANSI style codes for terminal markdown rendering
@@ -366,7 +368,7 @@ func RenderToolOutput(name string, output string, isError bool) string {
 	var out strings.Builder
 	if isError {
 		out.WriteString(fmt.Sprintf("  %s✗ %s failed:%s\n", cRed, name, ansiReset))
-		out.WriteString(fmt.Sprintf("  %s%s%s\n", cRed+ansiDim, truncate(output, 200), ansiReset))
+		out.WriteString(fmt.Sprintf("  %s%s%s\n", cRed+ansiDim, textutil.Truncate(output, 200), ansiReset))
 	} else {
 		out.WriteString(fmt.Sprintf("  %s✓ %s%s\n", cGreen, name, ansiReset))
 		if output != "" {
@@ -375,22 +377,15 @@ func RenderToolOutput(name string, output string, isError bool) string {
 			maxLines := 5
 			if len(lines) > maxLines {
 				for _, l := range lines[:maxLines] {
-					out.WriteString(fmt.Sprintf("  %s%s%s\n", ansiDim+cGray, truncate(l, 80), ansiReset))
+					out.WriteString(fmt.Sprintf("  %s%s%s\n", ansiDim+cGray, textutil.Truncate(l, 80), ansiReset))
 				}
 				out.WriteString(fmt.Sprintf("  %s... (%d more lines)%s\n", cGray, len(lines)-maxLines, ansiReset))
 			} else {
 				for _, l := range lines {
-					out.WriteString(fmt.Sprintf("  %s%s%s\n", ansiDim+cGray, truncate(l, 80), ansiReset))
+					out.WriteString(fmt.Sprintf("  %s%s%s\n", ansiDim+cGray, textutil.Truncate(l, 80), ansiReset))
 				}
 			}
 		}
 	}
 	return out.String()
-}
-
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max-3] + "..."
 }
