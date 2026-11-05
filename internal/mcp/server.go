@@ -14,6 +14,7 @@ import (
 	"github.com/AlleyBo55/gocode/internal/models"
 	"github.com/AlleyBo55/gocode/internal/runtime"
 	"github.com/AlleyBo55/gocode/internal/session"
+	"github.com/AlleyBo55/gocode/internal/textutil"
 	"github.com/AlleyBo55/gocode/internal/toolimpl"
 	"github.com/AlleyBo55/gocode/internal/tools"
 )
@@ -478,7 +479,7 @@ func (s *MCPServer) execSessionLoad(args map[string]interface{}) *MCPResponse {
 			start = 0
 		}
 		for _, msg := range stored.Messages[start:] {
-			sb.WriteString(fmt.Sprintf("**%s:** %s\n\n", msg.Role, truncate(msg.Content, 200)))
+			sb.WriteString(fmt.Sprintf("**%s:** %s\n\n", msg.Role, textutil.Truncate(msg.Content, 200)))
 		}
 	}
 
@@ -570,13 +571,6 @@ func intArg(args map[string]interface{}, key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
 
 // --- Transport: stdio ---
