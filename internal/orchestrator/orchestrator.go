@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/AlleyBo55/gocode/internal/agent"
 	"github.com/AlleyBo55/gocode/internal/apiclient"
@@ -207,10 +208,12 @@ func (o *Orchestrator) reportToMain(instance, task, output string, err error) {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	// Cut on a rune boundary; the count stays in bytes.
+	if utf8.RuneCountInString(s) <= n {
 		return s
-	}
-	return s[:n] + fmt.Sprintf("… [%d more bytes]", len(s)-n)
+		}
+	head := string([]rune(s)[:n])
+	return head + fmt.Sprintf("… [%d more bytes]", len(s)-len(head))
 }
 
 // --- ToolExecutor interface implementation ---
