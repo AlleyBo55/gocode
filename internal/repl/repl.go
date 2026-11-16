@@ -1035,19 +1035,15 @@ func summarizeToolInput(name string, input map[string]interface{}) string {
 	for _, key := range []string{"command", "path", "pattern", "query", "url", "file", "name", "agent_name", "task"} {
 		if v, ok := input[key]; ok {
 			s := fmt.Sprintf("%v", v)
-			if len(s) > 80 {
-				s = s[:77] + "..."
-			}
+			s = textutil.Truncate(s, 80)
 			return cGray + key + "=" + s + ansiReset
 		}
 	}
 	// Fallback: show first key=value
 	for k, v := range input {
 		s := fmt.Sprintf("%v", v)
-		if len(s) > 60 {
-			s = s[:57] + "..."
-		}
-		return cGray + k + "=" + s + ansiReset
+		s = textutil.Truncate(s, 60)
+			return cGray + k + "=" + s + ansiReset
 	}
 	return ""
 }
@@ -1142,15 +1138,11 @@ func summarizeJSON(s string) string {
 	parts := make([]string, 0, len(m))
 	for k, v := range m {
 		vs := fmt.Sprintf("%v", v)
-		if len(vs) > 60 {
-			vs = vs[:57] + "..."
-		}
+		vs = textutil.Truncate(vs, 60)
 		parts = append(parts, fmt.Sprintf("%s=%s", k, vs))
 	}
 	result := strings.Join(parts, ", ")
-	if len(result) > 120 {
-		result = result[:117] + "..."
-	}
+result = textutil.Truncate(result, 120)
 	return result
 }
 
