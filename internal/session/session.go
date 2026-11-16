@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	
+	"github.com/AlleyBo55/gocode/internal/textutil"
 )
 
 // ErrSessionNotFound is returned when a session file does not exist.
@@ -150,11 +152,8 @@ func (s *SessionStore) ListSessions() ([]SessionMeta, error) {
 
 		summary := ""
 		if len(stored.Messages) > 0 {
-			first := stored.Messages[0].Content
-			if len(first) > 80 {
-				first = first[:80] + "..."
-			}
-			summary = first
+			// Truncate by rune, not byte.
+			summary = textutil.Truncate(stored.Messages[0].Content, 80)
 		}
 
 		metas = append(metas, SessionMeta{
