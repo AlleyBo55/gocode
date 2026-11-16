@@ -8,6 +8,7 @@ import (
 
 	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
+	"github.com/AlleyBo55/gocode/internal/textutil"
 )
 
 // RuntimeOptions configures a ConversationRuntime.
@@ -608,10 +609,8 @@ func parseToolInput(input json.RawMessage) (map[string]interface{}, string) {
 
 func snippet(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) > 200 {
-		s = s[:199] + "…"
-	}
-	return fmt.Sprintf("%q", s)
+	// Truncate by rune, not byte: the input is arbitrary text, and a byte slice can cut a multibyte character in half, leaving invalid UTF-8 in the error message.
+	return fmt.Sprintf("%q", textutil.Truncate(s, 200))
 }
 
 func appendJSON(existing json.RawMessage, partial string) json.RawMessage {
