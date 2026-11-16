@@ -14,8 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AlleyBo55/gocode/internal/pdf"
+	"github.com/AlleyBo55/gocode/internal/textutil"
 )
 
 // ToolResult is the outcome of executing a tool.
@@ -112,10 +114,12 @@ func TruncateOutput(toolName, out string) string {
 	if i := strings.LastIndexByte(head, '\n'); i > headBudget/2 {
 		head = head[:i+1]
 	}
+	head = trimPartialRuneSuffix(head)
 	tail := out[len(out)-tailBudget:]
 	if i := strings.IndexByte(tail, '\n'); i >= 0 && i < tailBudget/2 {
 		tail = tail[i+1:]
 	}
+	tail = trimPartialRunePrefix(tail)
 	omitted := out[len(head) : len(out)-len(tail)]
 
 	hint := truncationHints[strings.ToLower(toolName)]
@@ -124,7 +128,31 @@ func TruncateOutput(toolName, out string) string {
 	}
 	marker := fmt.Sprintf("\n[gocode: output truncated. %d bytes (%d lines) omitted here; showing the first %d and last %d bytes of %d.%s]\n",
 		len(omitted), strings.Count(omitted, "\n"), len(head), len(tail), len(out), hint)
-	return head + marker + tail
+	return head + marker + tail	
+}
+
+// trimPartialRuneSuffix drops a trailing incomplete UTF-8 sequence, so a
+// byte cut does not leave a split multibyte character behind.
+func trimPartialRuneSuffix(s string) string {
+	for len(s) > 0 && s[len(s)-1] >= utf8.RuneSelf {
+		if r, size := utf8.DecodeLastRuneInString(s); r != utf8.RuneError || size != 1 {
+			break
+			}
+		s = s[:len(s)-1]
+		}
+	return s
+}
+
+// trimPartialRunePrefix drops a leading incomplete UTF-8 sequence, so a
+// byte cut does not leave a split multibyte character behind.
+func trimPartialRunePrefix(s string) string {
+	for len(s) > 0 && s[0] >= utf8.RuneSelf {
+		if r, size := utf8.DecodeRuneInString(s); r != utf8.RuneError || size != 1 {
+			break
+			}
+		s = s[1:]
+		}
+	return s
 }
 
 // --- BashTool ---
@@ -880,10 +908,8 @@ func searchGitHub(ctx context.Context, query string) (string, error) {
 
 	var sb strings.Builder
 	for _, item := range gr.Items {
-		desc := item.Description
-		if len(desc) > 120 {
-			desc = desc[:120] + "..."
-		}
+		// Truncate by rune, not byte: descriptions are arbitrary text.
+		desc := textutil.Truncate(item.Description, 120)
 		lang := ""
 		if item.Language != "" {
 			lang = fmt.Sprintf(" [%s]", item.Language)
@@ -931,11 +957,9 @@ func searchReddit(ctx context.Context, query string) (string, error) {
 	var sb strings.Builder
 	for _, child := range rr.Data.Children {
 		d := child.Data
-		selftext := d.Selftext
-		if len(selftext) > 150 {
-			selftext = selftext[:150] + "..."
-		}
-		sb.WriteString(fmt.Sprintf("↑%d 💬%d  %s  %s\n", d.Score, d.NumComments, d.Subreddit, d.Title))
+		// Truncate by rune, not byte: post bodies are arbitrary text.
+		selftext := textutil.Truncate(d.Selftext, 150)
+									sb.WriteString(fmt.Sprintf("↑%d 💬%d  %s  %s\n", d.Score, d.NumComments, d.Subreddit, d.Title))
 		if selftext != "" {
 			sb.WriteString(fmt.Sprintf("  %s\n", selftext))
 		}
