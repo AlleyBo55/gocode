@@ -14,6 +14,7 @@ import (
 
 	"github.com/AlleyBo55/gocode/internal/apiclient"
 	"github.com/AlleyBo55/gocode/internal/apitypes"
+	"github.com/AlleyBo55/gocode/internal/textutil"
 )
 
 // Check names, in the order they run.
@@ -275,10 +276,8 @@ func compactJSON(raw json.RawMessage) string {
 		return quoteShort(string(raw))
 	}
 	s := string(out)
-	if len(s) > 80 {
-		s = s[:79] + "…"
-	}
-	return s
+	// Truncate by rune, not byte: tool arguments are arbitrary text.
+	return textutil.Truncate(s, 80)
 }
 
 func (p Prober) checkParallel(parent context.Context) (Check, apitypes.Usage) {
