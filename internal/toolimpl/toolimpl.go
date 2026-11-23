@@ -182,6 +182,9 @@ func (t *BashTool) Execute(params map[string]interface{}) ToolResult {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	// A child that keeps stdout open (a dev server, "cmd &") must not hold
+	// the tool past its timeout.
+	cmd.WaitDelay = time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
