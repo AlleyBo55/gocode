@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -646,10 +649,29 @@ func (s *MCPServer) ServeStdioWithReaderWriter(r io.Reader, w io.Writer) error {
 
 // ServeHTTP starts an HTTP server that handles MCP requests via POST /mcp.
 func (s *MCPServer) ServeHTTP(addr string) error {
+	return http.ListenAndServe(addr, s.HTTPHandler())
+}
+
+// HTTPHandler returns the handler behind ServeHTTP.
+//
+// tools/call reaches the shell and file tools, so the handler only answers
+// requests a local MCP client would send: the body must be declared as
+// application/json, and a request that carries an Origin header must come
+// from a loopback origin. Browsers send an Origin on cross-site requests and
+// may send a text/plain POST without a preflight, so both checks are needed.
+func (s *MCPServer) HTTPHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !isJSONContentType(r.Header.Get("Content-Type")) {
+			http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && !isLoopbackOrigin(origin) {
+			http.Error(w, "Origin not allowed", http.StatusForbidden)
 			return
 		}
 
@@ -680,6 +702,37 @@ func (s *MCPServer) ServeHTTP(addr string) error {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	})
+	return mux
+}
 
-	return http.ListenAndServe(addr, mux)
+func isJSONContentType(v string) bool {
+	mt, _, err := mime.ParseMediaType(v)
+	return err == nil && mt == "application/json"
+}
+
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// IsLoopbackAddr reports whether a listen address such as "127.0.0.1:8080"
+// binds only to the loopback interface. ":8080" binds every interface.
+func IsLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
