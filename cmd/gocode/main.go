@@ -1362,6 +1362,9 @@ once per model. Pass --refresh to probe again.`,
 			case "stdio":
 				return server.ServeStdio()
 			case "http":
+				if !mcp.IsLoopbackAddr(addr) {
+					fmt.Fprintf(os.Stderr, "Warning: %s is reachable from other machines, and this server runs shell and file tools without authentication. Use 127.0.0.1 unless the network is trusted.\n", addr)
+				}
 				fmt.Fprintf(os.Stderr, "Starting MCP HTTP server on %s\n", addr)
 				return server.ServeHTTP(addr)
 			default:
@@ -1370,7 +1373,7 @@ once per model. Pass --refresh to probe again.`,
 		},
 	}
 	mcpServeCmd.Flags().String("transport", "stdio", "Transport type: stdio or http")
-	mcpServeCmd.Flags().String("addr", ":8080", "HTTP listen address (only for http transport)")
+	mcpServeCmd.Flags().String("addr", "127.0.0.1:8080", "HTTP listen address (only for http transport)")
 	rootCmd.AddCommand(mcpServeCmd)
 
 	// 21b. rea — built-in REA (Reverse Engineer Anything) MCP integration.

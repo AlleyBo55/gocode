@@ -27,7 +27,7 @@ Your IDE handles the LLM calls. gocode handles the tool execution.
 gocode mcp-serve --transport stdio
 
 # HTTP transport (for any client)
-gocode mcp-serve --transport http --addr :8080
+gocode mcp-serve --transport http --addr 127.0.0.1:8080
 ```
 
 ---
@@ -116,7 +116,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ### Any HTTP Client
 
 ```bash
-gocode mcp-serve --transport http --addr :8080
+gocode mcp-serve --transport http --addr 127.0.0.1:8080
 # POST http://localhost:8080/mcp
 ```
 

@@ -91,7 +91,7 @@ loops or a prompt that balloons is capped in dollars rather than turns.
 ```
 Flags:
   --transport string   Transport type: stdio or http (default "stdio")
-  --addr string        HTTP listen address (default ":8080")
+  --addr string        HTTP listen address (default "127.0.0.1:8080")
 ```
 
 ---
