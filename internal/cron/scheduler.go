@@ -39,14 +39,19 @@ func (s *Scheduler) Create(cronExpr, prompt string, recurring bool) (string, err
 	if err != nil {
 		return "", fmt.Errorf("invalid cron: %w", err)
 	}
+	now := time.Now()
+	next := NextRun(fields, now)
+	if next.IsZero() {
+		// A date that never comes (Feb 30): a zero NextRun would fire at once, forever.
+		return "", fmt.Errorf("invalid cron: %q never matches a date", cronExpr)
+	}
 	s.mu.Lock()
 	id := fmt.Sprintf("cron-%d", s.nextID)
 	s.nextID++
 	ctx, cancel := context.WithCancel(context.Background())
-	now := time.Now()
 	task := &Task{
 		ID: id, Cron: cronExpr, Prompt: prompt, Recurring: recurring,
-		Fields: fields, CreatedAt: now, NextRun: NextRun(fields, now), cancel: cancel,
+		Fields: fields, CreatedAt: now, NextRun: next, cancel: cancel,
 	}
 	s.tasks[id] = task
 	s.mu.Unlock()

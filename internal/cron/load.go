@@ -41,6 +41,10 @@ func (s *Scheduler) LoadSchedules(dataDir string) (int, error) {
 		if err != nil {
 			continue
 		}
+		next := NextRun(fields, time.Now())
+		if next.IsZero() {
+			continue // never matches a date (saved before Create rejected these)
+		}
 
 		createdAt := time.Now()
 		if e.CreatedAt != "" {
@@ -58,7 +62,7 @@ func (s *Scheduler) LoadSchedules(dataDir string) (int, error) {
 			Recurring: e.Recurring,
 			Fields:    fields,
 			CreatedAt: createdAt,
-			NextRun:   NextRun(fields, time.Now()),
+			NextRun:   next,
 			cancel:    cancel,
 		}
 		s.tasks[task.ID] = task
